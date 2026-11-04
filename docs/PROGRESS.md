@@ -5,7 +5,7 @@ by" is ticked here and in its own file.
 
 ## Frontier
 
-Next: **06 — Test data & eval**
+Next: **07 — Hardening & handover**
 
 | Card | Ticket                    | Blocked by | Done |
 | ---- | ------------------------- | ---------- | ---- |
@@ -14,7 +14,7 @@ Next: **06 — Test data & eval**
 | S2   | 03-capture-and-save       | 02         | [x]  |
 | S3   | 04-pipeline               | 03         | [x]  |
 | S4   | 05-follow-up-and-summary  | 04         | [x]  |
-| S5   | 06-test-data-and-eval     | 04         | [ ]  |
+| S5   | 06-test-data-and-eval     | 04         | [x]  |
 | S6   | 07-hardening-and-handover | 05, 06     | [ ]  |
 
 ## Handoff log
@@ -29,6 +29,49 @@ Newest first. One entry per session, in this shape:
 - Traps hit:
 - Next:
 ```
+
+### S5 — Test data & eval — 2026-11-04
+
+- Done: `scripts/seed.ts` (`pnpm db:seed --target test`) reads `sample-enquiries.csv` with a
+  quoted-field parser, inserts all twenty rows with their 2026-10-26/27 Asia/Dhaka timestamps, and
+  refuses to run unless the target is explicitly `test` and differs from `DATABASE_URL`. The pure
+  guard `resolveSeedTarget` in `lib/db/branch.ts` also refuses `--target production`,
+  `DATABASE_BRANCH=production`, a missing production URL and a test URL that normalises to the
+  production one (credentials, query and trailing slash ignored); six new tests cover it. Demo
+  statuses populate all five board columns (16 leads: New 8, Contacted 4, Interested 2, Paid 1,
+  Lost 1), the queue (12 New/Contacted sales leads, all overdue) and the summary's
+  `stuck`/`leads_by_status` counts. The seed verifies those three views after writing and exits
+  non-zero if any count is wrong; a non-empty branch needs `--reset`. `scripts/eval.ts`
+  (`pnpm eval`) runs all twenty samples through the configured `AiExtractor` and
+  `validateExtraction`, diffs kind/interest/reply_language plus name/phone/channel/company/role/
+  attention and reply presence/language against the frozen expectation, prints one PASS/FAIL line
+  per row with mismatch details, and exits 1 on any mismatch. Mock fixtures now cover all twenty
+  samples (lookup strips the eval's sender header); #7, #8 and #17's interest was corrected to
+  `unclear` against the frozen table. The route test harnesses clear the table inside their
+  rollback transactions now that the testing branch holds demo rows. 158 tests (6 new),
+  `pnpm typecheck` and `pnpm build` clean.
+- Verified: all four guard refusals exit 1 (no target, `--target production`, identical
+  `TEST_DATABASE_URL`/`DATABASE_URL`, `DATABASE_BRANCH=production`). `pnpm db:seed --target test`
+  inserted 20 rows; a direct query reports testing oldest `2026-10-26T03:12:00Z`, newest
+  `2026-10-27T10:00:00Z`, production 0 rows. Live on 3105 against the seeded branch:
+  `/api/pipeline` 16 (New 8, Contacted 4, Interested 2, Paid 1, Lost 1), `/api/reminders` 12,
+  `/api/summary` facts stuck 12 and leads_by_status 16, and `/`, `/pipeline`, `/follow-ups`,
+  `/summary`, `/enquiries` all 200. `pnpm eval` printed `20/20 rows passed.` and exited 0; with
+  `MOCK_AI=0` and no key it printed `0/20 rows passed.` and exited 1. `pnpm test` 158 passed with
+  the seeded branch in place.
+- Not done: no real-model eval was possible — `.env.local` has `MOCK_AI=1` and no
+  `OPENROUTER_API_KEY`. The 20/20 is a harness check, not a claim about model quality; with a real
+  key and model configured, the same command becomes the measurement.
+- Traps hit: the fixed sample dates (2026-10-26/27) are outside the summary's seven-day window when
+  reviewed after 2026-11-03, so `received` and `moved` read 0 while `stuck=12` and
+  `leads_by_status=16` are populated. Moving the sample timestamps to make the week look fuller
+  would break the ticket's "original timestamps"; the zeros are the honest result. The eval gives
+  each row a `From:`/`Phone:`/`Channel:` header because the CSV keeps those beside the message, not
+  inside it; mock fixture lookup strips that header. `tsx` is now an explicit devDependency (it was
+  already in the lockfile through Vitest) so the two TypeScript scripts do not rely on a transitive
+  binary. Seeded rows keep `suggested_reply` empty because none of the three seeded views renders a
+  reply.
+- Next: start S6 — Hardening & handover (`07-hardening-and-handover.md`).
 
 ### S4 — Follow-up & Summary — 2026-11-04
 

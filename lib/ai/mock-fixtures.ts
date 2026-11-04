@@ -82,7 +82,7 @@ const FIXTURES: Record<string, unknown> = {
     phone: '01711000007',
     channel: 'whatsapp',
     channel_handle: null,
-    interest: 'bootcamp',
+    interest: 'unclear',
     kind: 'support',
     summary: 'Says she paid via bKash on the 25th and received no confirmation.',
     suggested_reply:
@@ -98,7 +98,7 @@ const FIXTURES: Record<string, unknown> = {
     phone: '01711000008',
     channel: 'website',
     channel_handle: null,
-    interest: 'bootcamp',
+    interest: 'unclear',
     kind: 'sales_lead',
     summary: 'Asks about the refund policy if she cannot attend.',
     suggested_reply:
@@ -129,7 +129,7 @@ const FIXTURES: Record<string, unknown> = {
     phone: null,
     channel: 'facebook',
     channel_handle: null,
-    interest: 'bootcamp',
+    interest: 'unclear',
     kind: 'sales_lead',
     summary: 'Asks whether the course certificate is government approved.',
     suggested_reply:
@@ -153,10 +153,207 @@ const FIXTURES: Record<string, unknown> = {
     reply_language: 'en',
     needs_attention: false,
   },
+
+  'Called to ask about student discount. Said she will call again tomorrow after 5 PM.': {
+    name: 'Nasreen Sultana',
+    company: null,
+    job_title: null,
+    phone: '01711000005',
+    channel: 'phone',
+    channel_handle: null,
+    interest: 'unclear',
+    kind: 'sales_lead',
+    summary:
+      'Called about a student discount and will call back tomorrow after 5 PM.',
+    suggested_reply:
+      'Hi Nasreen, thanks for calling about the student discount. We will be ready for your call tomorrow after 5 PM.',
+    reply_language: 'en',
+    needs_attention: false,
+  },
+
+  'Ei course korle job pabo?': {
+    name: 'Ishtiaq',
+    company: null,
+    job_title: null,
+    phone: null,
+    channel: 'facebook',
+    channel_handle: null,
+    interest: 'unclear',
+    kind: 'sales_lead',
+    summary: 'Asks whether the course leads to a job.',
+    suggested_reply:
+      'Vai, ei course ta job er jonno skills prepare korte sahajjo kore. Apnar proshno gulor detail amra shiggiri janabo.',
+    reply_language: 'banglish',
+    needs_attention: false,
+  },
+
+  'Offline class kothay hobe? Mirpur e?': {
+    name: 'Jahid',
+    company: null,
+    job_title: null,
+    phone: null,
+    channel: 'facebook',
+    channel_handle: null,
+    interest: 'bootcamp',
+    kind: 'sales_lead',
+    summary: 'Asks where the offline class will be held, mentioning Mirpur.',
+    suggested_reply:
+      'Vai, offline class er location {{location}}. Exact venue amra shiggiri janabo.',
+    reply_language: 'banglish',
+    needs_attention: false,
+  },
+
+  "Hi, I'm from a bank in Motijheel. Need a quote for training 120 employees. Online or onsite both fine.": {
+    name: 'Kamrul Islam',
+    company: 'a bank in Motijheel',
+    job_title: 'HR',
+    phone: '01711000010',
+    channel: 'whatsapp',
+    channel_handle: null,
+    interest: 'corporate',
+    kind: 'sales_lead',
+    summary: 'A bank in Motijheel needs a quote for training 120 employees.',
+    suggested_reply:
+      'Hello Kamrul, thank you for reaching out. We can arrange training for your 120 employees, online or onsite. Could you share a good time to discuss the quote?',
+    reply_language: 'en',
+    needs_attention: false,
+  },
+
+  'Bootcamp er price ta bolen please': {
+    name: 'Rafi Ahmed',
+    company: null,
+    job_title: null,
+    phone: '01711000001',
+    channel: 'whatsapp',
+    channel_handle: null,
+    interest: 'bootcamp',
+    kind: 'sales_lead',
+    summary: 'Follows up asking for the bootcamp price.',
+    suggested_reply:
+      'Rafi, bootcamp er fee {{price}}. Payment er jonno {{payment_method}} use korte parben.',
+    reply_language: 'banglish',
+    needs_attention: false,
+  },
+
+  'আমি ক্লাস ৯-এ পড়ি। আমি কি ফ্রি মাস্টারক্লাসে জয়েন করতে পারব?': {
+    name: 'Mim',
+    company: null,
+    job_title: null,
+    phone: null,
+    channel: 'facebook',
+    channel_handle: null,
+    interest: 'fellowship',
+    kind: 'sales_lead',
+    summary: 'A class 9 student asks to join the free masterclass.',
+    suggested_reply:
+      'মিম, তুমি ফ্রি মাস্টারক্লাসে জয়েন করতে পারবে। কীভাবে জয়েন করবে আমরা শীঘ্রই জানাবো।',
+    reply_language: 'bn',
+    needs_attention: false,
+  },
+
+  'Is the fellowship suitable for a non-technical marketing manager? I have 8 years of experience but no coding.': {
+    name: 'Shirin Sultana',
+    company: null,
+    job_title: null,
+    phone: '01711000013',
+    channel: 'website',
+    channel_handle: null,
+    interest: 'fellowship',
+    kind: 'sales_lead',
+    summary:
+      'A non-technical marketing manager asks if the fellowship suits her.',
+    suggested_reply:
+      'Hi Shirin, yes — the fellowship is designed to welcome people from non-technical backgrounds. We would be glad to talk through how it fits your experience.',
+    reply_language: 'en',
+    needs_attention: false,
+  },
+
+  'Add-on ta ki? Lifetime access mane ki?': {
+    name: 'Tanvir',
+    company: null,
+    job_title: null,
+    phone: '01711000014',
+    channel: 'whatsapp',
+    channel_handle: null,
+    interest: 'bootcamp',
+    kind: 'sales_lead',
+    summary: 'Asks what the add-on is and what lifetime access means.',
+    suggested_reply:
+      'Tanvir, add-on ar lifetime access er detail amra shiggiri janabo.',
+    reply_language: 'banglish',
+    needs_attention: false,
+  },
+
+  'Caller wants to cancel his enrolment and get his money back. Very upset. Said he will post about it on Facebook if not solved today.': {
+    name: 'Habibur Rahman',
+    company: null,
+    job_title: null,
+    phone: '01711000015',
+    channel: 'phone',
+    channel_handle: null,
+    interest: 'unclear',
+    kind: 'support',
+    summary:
+      'Wants to cancel and get a refund, threatening to post publicly.',
+    suggested_reply:
+      'Hello Habibur, I am sorry to hear this. We are looking into your cancellation and refund today and will contact you as soon as it is resolved.',
+    reply_language: 'en',
+    needs_attention: true,
+  },
+
+  'আমার কোম্পানির ১৫ জন কর্মীর জন্য কি গ্রুপ ডিসকাউন্ট আছে?': {
+    name: 'Rezaul Karim',
+    company: 'small garment factory',
+    job_title: 'owner',
+    phone: '01711000017',
+    channel: 'whatsapp',
+    channel_handle: null,
+    interest: 'corporate',
+    kind: 'sales_lead',
+    summary:
+      'Owner of a small garment factory asks about a group discount for 15 staff.',
+    suggested_reply:
+      'রেজাউল করিম, আপনার কোম্পানির ১৫ জন কর্মীর জন্য গ্রুপ ডিসকাউন্টের বিষয়টি আমরা জানিয়ে দেবো। {{discount}} সম্পর্কে বিস্তারিত শীঘ্রই জানাবো।',
+    reply_language: 'bn',
+    needs_attention: false,
+  },
+
+  'Can I pay in two instalments for the fellowship?': {
+    name: 'Samira',
+    company: null,
+    job_title: null,
+    phone: '01711000018',
+    channel: 'whatsapp',
+    channel_handle: null,
+    interest: 'fellowship',
+    kind: 'sales_lead',
+    summary:
+      'Asks whether the fellowship fee can be paid in two instalments.',
+    suggested_reply:
+      'Hi Samira, yes — the fellowship can be paid in instalments. The exact plan is {{instalments}}, and we can walk you through it.',
+    reply_language: 'en',
+    needs_attention: false,
+  },
 };
 
 function fingerprint(message: string): string {
   return message.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/**
+ * The eval and the seed paste a sender line ahead of the message, because the
+ * sample CSV keeps that context in separate columns. The fixture table is
+ * keyed by the message itself, so a leading `From:`/`Phone:`/`Channel:` block
+ * is removed before lookup. A bare message still matches unchanged.
+ */
+function messageBody(message: string): string {
+  const separator = message.indexOf('\n\n');
+
+  if (separator !== -1 && /^From:\s/m.test(message.slice(0, separator))) {
+    return message.slice(separator + 2);
+  }
+
+  return message;
 }
 
 const FIXTURES_BY_FINGERPRINT = new Map(
@@ -164,7 +361,7 @@ const FIXTURES_BY_FINGERPRINT = new Map(
 );
 
 export function mockFixtureFor(message: string): unknown | undefined {
-  return FIXTURES_BY_FINGERPRINT.get(fingerprint(message));
+  return FIXTURES_BY_FINGERPRINT.get(fingerprint(messageBody(message)));
 }
 
 /**
@@ -195,5 +392,7 @@ function fallbackExtraction(message: string): unknown {
 }
 
 export function mockExtractionFor(message: string): unknown {
-  return structuredClone(mockFixtureFor(message) ?? fallbackExtraction(message));
+  return structuredClone(
+    mockFixtureFor(message) ?? fallbackExtraction(messageBody(message)),
+  );
 }

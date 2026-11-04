@@ -12,7 +12,9 @@
     "test": "vitest run",
     "db:push:test": "node scripts/db-push.mjs --target test",
     "db:push:prod": "node scripts/db-push.mjs --target production",
-    "db:verify": "node scripts/db-verify.mjs"
+    "db:verify": "node scripts/db-verify.mjs",
+    "db:seed": "tsx scripts/seed.ts",
+    "eval": "tsx scripts/eval.ts"
   },
   "dependencies": {
     "drizzle-orm": "0.45.4",
@@ -29,6 +31,7 @@
     "@types/react-dom": "19.3.0",
     "drizzle-kit": "0.31.11",
     "tailwindcss": "4.3.4",
+    "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "5.1.0"
   },

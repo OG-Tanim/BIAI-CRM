@@ -10,7 +10,7 @@
 
 **Do not build:** any import endpoint, any upload, any CSV parsing exposed to a user.
 
-- [ ] Seeding the testing branch populates the board, the follow-up queue and the weekly summary
-- [ ] Seeding refuses to run when pointed at the production connection string
-- [ ] All twenty sample messages load with their original timestamps
-- [ ] The eval runs all twenty through extraction, prints a row-by-row pass/fail, and exits non-zero on any mismatch
+- [x] Seeding the testing branch populates the board, the follow-up queue and the weekly summary
+- [x] Seeding refuses to run when pointed at the production connection string
+- [x] All twenty sample messages load with their original timestamps
+- [x] The eval runs all twenty through extraction, prints a row-by-row pass/fail, and exits non-zero on any mismatch

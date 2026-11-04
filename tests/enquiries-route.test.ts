@@ -26,6 +26,11 @@ type App = {
 
 async function scenario(run: (app: App) => Promise<void>): Promise<void> {
   await withRollback(async (tx) => {
+    // Ticket 06 seeds the testing branch. Clearing inside the transaction
+    // keeps "exactly one row" deterministic; the rollback puts the demo data
+    // back when the test finishes.
+    await tx.delete(enquiries);
+
     const handler = createEnquiriesHandler({ db: tx });
 
     await run({

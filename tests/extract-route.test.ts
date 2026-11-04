@@ -80,7 +80,7 @@ describe('POST /api/extract', () => {
     expect(body).toMatchObject({
       name: 'Nowshin',
       channel: 'facebook',
-      interest: 'bootcamp',
+      interest: 'unclear',
       kind: 'sales_lead',
       reply_language: 'banglish',
     });

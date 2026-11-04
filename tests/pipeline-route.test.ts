@@ -61,6 +61,11 @@ function request(id: string, body: unknown): Request {
 
 async function scenario(run: (app: App) => Promise<void>): Promise<void> {
   await withRollback(async (tx) => {
+    // Ticket 06 seeds the testing branch. Clearing inside the transaction
+    // keeps the counts and order deterministic; the rollback restores the
+    // demo data when the test finishes.
+    await tx.delete(enquiries);
+
     const pipelineHandler = createPipelineHandler({ db: tx, now: () => NOW });
     const listHandler = createEnquiryListHandler({ db: tx });
     const updateHandler = createEnquiryUpdateHandler({ db: tx, now: () => NOW });
