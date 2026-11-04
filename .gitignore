@@ -27,3 +27,6 @@ coverage/
 *.sqlite3
 *.log
 .DS_Store
+
+# local scratch (diagnostic probes, temporary notes)
+.scratch/

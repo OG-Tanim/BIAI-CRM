@@ -1,5 +1,8 @@
 # Implementation Plan — BIAI CRM
 
+> **Status (2026-11-04):** all seven sessions are complete and the ticket files have been
+> retired. This plan is kept as implementation history, not as pending work.
+
 **Purpose.** Build `docs/SPEC.md` across several sessions, each starting with no memory of the conversation that produced it. The spec is the authority; this file is the order of work and the handoff contract.
 
 **Sequencing.** Seven sessions, ordered by dependency rather than by time. Finish a card before starting the next.

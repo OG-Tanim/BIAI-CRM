@@ -1,12 +1,12 @@
 # Progress
 
-Seven tickets under `.scratch/biai-crm/issues/`. A ticket is next when every ticket in its "Blocked
-by" is ticked here and in its own file.
+All seven tickets are complete and their files have been retired. This document remains as the
+handoff history; `README.md` is the handover document.
 
 ## Frontier
 
-All seven tickets are ticked. Handover is complete; there is no next ticket. S7 below is a
-post-handover review pass, not a ticket.
+Handover is complete; there is no next ticket. S7 was a post-handover review pass and is recorded
+below.
 
 | Card | Ticket                    | Blocked by | Done |
 | ---- | ------------------------- | ---------- | ---- |
