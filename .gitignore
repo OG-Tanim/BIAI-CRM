@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+.tools/
+.pnpm-store/
+.npm-cache/
+
+# next
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# env — never commit secrets
+.env
+.env.local
+.env*.local
+
+# tests
+coverage/
+
+# deployment
+.vercel/
+
+# local databases / tooling
+.local-db/
+*.sqlite
+*.sqlite3
+*.log
+.DS_Store
