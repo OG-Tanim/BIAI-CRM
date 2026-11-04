@@ -30,6 +30,7 @@ export default async function EnquiriesPage({
     status: statusParam,
     kind: kindParam,
   });
+  const filtered = filters.status !== null || filters.kind !== null;
 
   let list: EnquiryListResponse | null = null;
   let loadError: string | null = null;
@@ -132,17 +133,20 @@ export default async function EnquiriesPage({
         list.total === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
             <p className="text-sm font-medium text-slate-800">
-              No enquiries match this filter.
+              {filtered
+                ? 'No enquiries match this filter.'
+                : 'No enquiries yet.'}
             </p>
-            <p className="mt-1 text-sm text-slate-600">
-              Clear the filter to see every enquiry, or capture a new one from
-              the Capture page.
+            <p className="mx-auto mt-1 max-w-xl text-sm text-slate-600">
+              {filtered
+                ? 'Clear the filter to see every enquiry, or capture a new one from the Capture page.'
+                : 'Every captured enquiry appears here, including spam, job seekers and support threads kept off the pipeline. Capture the first one to start the list.'}
             </p>
             <Link
-              href="/enquiries"
+              href={filtered ? '/enquiries' : '/'}
               className="mt-4 inline-block rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
             >
-              Clear the filter
+              {filtered ? 'Clear the filter' : 'Capture an enquiry'}
             </Link>
           </div>
         ) : (

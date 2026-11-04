@@ -4,12 +4,12 @@
 
 **Blocked by:** 05 — Follow-up & Summary · 06 — Test data & eval
 
-**Status:** ready-for-agent
+**Status:** complete
 
 **Read:** Known risks · Out of Scope
 
 **Do not build:** authentication, new features, a redesign.
 
-- [ ] With no API key the app loads, states that AI is unavailable, and manual entry still works
-- [ ] Every view has an empty state that explains itself
-- [ ] The README records the decisions, the deliberate cuts and the trade-offs
+- [x] With no API key the app loads, states that AI is unavailable, and manual entry still works
+- [x] Every view has an empty state that explains itself
+- [x] The README records the decisions, the deliberate cuts and the trade-offs

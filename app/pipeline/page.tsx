@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getDb } from '@/lib/db/client';
 import { loadPipeline, type PipelineResponse } from '@/lib/api/pipeline';
 import { logFailure } from '@/lib/log';
@@ -40,7 +41,27 @@ export default async function PipelinePage() {
       </header>
 
       {pipeline ? (
-        <PipelineBoard initialPipeline={pipeline} />
+        pipeline.total === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
+            <p className="text-sm font-semibold text-slate-800">
+              No sales leads on the board yet.
+            </p>
+            <p className="mx-auto mt-1 max-w-xl text-sm leading-relaxed text-slate-600">
+              The board only shows genuine sales leads. Spam, job seekers,
+              support threads and unclear messages are kept in the list. A
+              captured enquiry starts in New and appears here as soon as it is
+              saved as a sales lead.
+            </p>
+            <Link
+              href="/"
+              className="mt-4 inline-block rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+            >
+              Capture an enquiry
+            </Link>
+          </div>
+        ) : (
+          <PipelineBoard initialPipeline={pipeline} />
+        )
       ) : (
         <p
           role="alert"

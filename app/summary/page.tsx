@@ -27,7 +27,12 @@ export default async function SummaryPage() {
     logFailure('summary page', 'aggregate', error);
   }
 
-  if (facts) {
+  const hasSummaryData =
+    facts !== null &&
+    (facts.received > 0 ||
+      STATUSES.some((status) => facts.leads_by_status[status] > 0));
+
+  if (facts && hasSummaryData) {
     try {
       const template = await getSummaryNarrator().narrate(facts);
       narrative = renderSummaryNarration(template, facts);
@@ -70,6 +75,24 @@ export default async function SummaryPage() {
           Could not compute the weekly summary. Check the database connection
           and reload.
         </p>
+      ) : !hasSummaryData ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
+          <p className="text-sm font-semibold text-slate-800">
+            Nothing to summarise yet.
+          </p>
+          <p className="mx-auto mt-1 max-w-xl text-sm leading-relaxed text-slate-600">
+            No enquiries arrived in this seven-day window and there are no
+            sales leads on the board. Capture the first enquiry and the counts,
+            the week in words and the pipeline shape will fill in from the
+            database.
+          </p>
+          <Link
+            href="/"
+            className="mt-4 inline-block rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+          >
+            Capture an enquiry
+          </Link>
+        </div>
       ) : (
         <>
           <section

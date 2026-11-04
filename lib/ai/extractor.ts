@@ -3,6 +3,7 @@ import {
   buildExtractionUserPrompt,
 } from '@/lib/ai/prompt';
 import { mockExtractionFor } from '@/lib/ai/mock-fixtures';
+import { resolveAiMode } from '@/lib/ai/availability';
 
 /**
  * The single AI port. Everything above this line sees a plain function that
@@ -144,18 +145,20 @@ function unavailableExtractor(reason: string): AiExtractor {
  * into a 503 instead of crashing the server.
  */
 export function createExtractorFromEnv(env: Env = process.env): AiExtractor {
-  if (env.MOCK_AI === '1') {
+  const mode = resolveAiMode(env);
+
+  if (mode === 'mock') {
     return createMockExtractor();
   }
 
-  const apiKey = env.OPENROUTER_API_KEY?.trim();
-  const model = env.OPENROUTER_MODEL?.trim();
-
-  if (!apiKey || !model) {
+  if (mode === 'unavailable') {
     return unavailableExtractor(
       'Set OPENROUTER_API_KEY and OPENROUTER_MODEL, or set MOCK_AI=1.',
     );
   }
+
+  const apiKey = env.OPENROUTER_API_KEY!.trim();
+  const model = env.OPENROUTER_MODEL!.trim();
 
   return createOpenRouterExtractor({
     apiKey,

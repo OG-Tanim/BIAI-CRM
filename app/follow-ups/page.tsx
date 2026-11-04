@@ -57,6 +57,8 @@ export default async function FollowUpsPage() {
           </p>
           <p className="mt-1 text-sm text-slate-600">
             Every open sales lead has been contacted within the last 48 hours.
+            If the board is empty, capture an enquiry first — the queue fills
+            as leads age without a contact.
           </p>
           <Link
             href="/pipeline"

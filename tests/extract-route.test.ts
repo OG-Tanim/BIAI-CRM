@@ -246,4 +246,17 @@ describe('the Next.js route binding', () => {
     expect(Object.keys(body).sort()).toEqual(CONTRACT_KEYS);
     expect(body.name).toBe('Nowshin');
   });
+
+  it('loads and answers 503 from the real binding when no AI is configured', async () => {
+    vi.resetModules();
+    vi.stubEnv('MOCK_AI', '0');
+    vi.stubEnv('OPENROUTER_API_KEY', '');
+    vi.stubEnv('OPENROUTER_MODEL', '');
+
+    const { POST } = await import('@/app/api/extract/route');
+    const response = await POST(request({ message: BANGLISH_17 }));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: 'ai_unavailable' });
+  });
 });

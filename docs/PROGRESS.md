@@ -5,7 +5,7 @@ by" is ticked here and in its own file.
 
 ## Frontier
 
-Next: **07 — Hardening & handover**
+All seven tickets are ticked. Handover is complete; there is no next ticket.
 
 | Card | Ticket                    | Blocked by | Done |
 | ---- | ------------------------- | ---------- | ---- |
@@ -15,7 +15,7 @@ Next: **07 — Hardening & handover**
 | S3   | 04-pipeline               | 03         | [x]  |
 | S4   | 05-follow-up-and-summary  | 04         | [x]  |
 | S5   | 06-test-data-and-eval     | 04         | [x]  |
-| S6   | 07-hardening-and-handover | 05, 06     | [ ]  |
+| S6   | 07-hardening-and-handover | 05, 06     | [x]  |
 
 ## Handoff log
 
@@ -29,6 +29,43 @@ Newest first. One entry per session, in this shape:
 - Traps hit:
 - Next:
 ```
+
+### S6 — Hardening & handover — 2026-11-04
+
+- Done: one AI-mode resolver (`lib/ai/availability.ts`: live / mock / unavailable) now drives the
+  extractor, the narrator and a global banner. Without a key the layout says AI is unavailable, the
+  Capture screen disables **Read message** and offers **Fill in manually**, which opens the same
+  reviewed form with an empty draft and a still-editable original message; saving, the board, the
+  queue and the list never touch AI. Empty states now cover every view: Capture before a proposal,
+  the pipeline with no sales leads, the list with no rows (separated from "no matches"), the summary
+  with no arrivals and no leads, and the follow-up queue's existing "nobody forgotten" panel now
+  names the empty-board case. `README.md` is a handover document: run instructions, AI modes,
+  architecture, the decisions and the reason for each, the deliberate out-of-scope cuts, the
+  trade-offs and known gaps, the two testing seams, and the sample data. One new route-seam test
+  proves the real `/api/extract` binding loads and answers 503 with no key; 159 tests,
+  `pnpm typecheck` and `pnpm build` clean.
+- Verified: on 3106 with `MOCK_AI=0` and empty key/model, `/`, `/pipeline`, `/follow-ups`,
+  `/enquiries`, `/summary` and `/api/health` all returned 200, the banner read "AI is unavailable.",
+  the Read button was disabled, `POST /api/extract` returned 503 `ai_unavailable`, and `/summary`
+  showed its counts with the narration-unavailable notice. A manual-style `POST /api/enquiries`
+  (no AI involved) returned 201 and the row appeared in `/api/enquiries?status=new` and
+  `/api/pipeline`; the verification row was then deleted and `/api/health` reported the seeded
+  testing branch back at enquiries=20, notes=0. On 3107 against the empty production branch,
+  every page returned 200 and each empty state's text was present. After the final edits:
+  `pnpm test` 159 passed, `tsc --noEmit` clean, `next build` clean.
+- Not done: no real-model eval — the environment still has no OpenRouter key, so 20/20 remains a
+  fixture check. There is no automated browser test; the manual flow was exercised through the
+  same endpoint the form posts to and its buttons were checked in the rendered HTML. There is no
+  retry/backoff around OpenRouter; a provider failure is a visible 502 and the README records the
+  gap.
+- Traps hit: `.env.local` sets `MOCK_AI=1`, so a no-key check must override it from the shell
+  (`MOCK_AI=0 OPENROUTER_API_KEY= OPENROUTER_MODEL=`). The root layout was statically rendered at
+  build time, which would have baked the banner state into the build; `dynamic = 'force-dynamic'`
+  keeps the AI mode a fact about the running process. Manual entry still requires the original
+  message, because the API refuses to save evidence-free rows; the form now says so and disables
+  Save while it is empty.
+- Next: handover. If the project continues, run `pnpm eval` with a real key and model, and consider
+  one retry with backoff for free-model throttling.
 
 ### S5 — Test data & eval — 2026-11-04
 

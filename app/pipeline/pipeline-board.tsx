@@ -136,7 +136,7 @@ export function PipelineBoard({
             <div className="mt-3 flex flex-col gap-3">
               {column.cards.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-slate-300 px-3 py-4 text-center text-xs text-slate-500">
-                  No cards.
+                  No leads in this stage.
                 </p>
               ) : (
                 column.cards.map((card) => (

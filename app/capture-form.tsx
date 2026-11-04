@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import type { EnquiryDto } from '@/lib/api/enquiry-dto';
 import type { DuplicateSummary, SaveEnquiryResponse } from '@/lib/api/enquiries';
+import type { AiMode } from '@/lib/ai/availability';
 import {
   UnfilledPlaceholderError,
   pendingPlaceholders,
@@ -125,10 +126,13 @@ function errorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-export function CaptureForm() {
+export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
   const [rawMessage, setRawMessage] = useState('');
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [hasProposal, setHasProposal] = useState(false);
+  // Manual entry is the same review form with no AI proposal behind it. The
+  // message stays editable because there is no extraction to preserve.
+  const [manual, setManual] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -136,6 +140,7 @@ export function CaptureForm() {
   const [saved, setSaved] = useState<SaveEnquiryResponse | null>(null);
   const [copyNotice, setCopyNotice] = useState<Notice | null>(null);
   const saveInFlight = useRef(false);
+  const canUseAi = aiMode !== 'unavailable';
 
   function update<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -159,6 +164,7 @@ export function CaptureForm() {
       }
 
       setDraft(draftFromExtraction(payload as ExtractionPayload));
+      setManual(false);
       setHasProposal(true);
     } catch {
       setExtractError('Could not reach the extraction service. Try again.');
@@ -247,10 +253,21 @@ export function CaptureForm() {
     }
   }
 
+  function startManual() {
+    if (rawMessage.trim() === '') return;
+    setDraft(EMPTY_DRAFT);
+    setManual(true);
+    setHasProposal(true);
+    setExtractError(null);
+    setSaveError(null);
+    setCopyNotice(null);
+  }
+
   function startAnother() {
     setRawMessage('');
     setDraft(EMPTY_DRAFT);
     setHasProposal(false);
+    setManual(false);
     setExtractError(null);
     setSaveError(null);
     setSaved(null);
@@ -368,9 +385,9 @@ export function CaptureForm() {
           Capture an enquiry
         </h1>
         <p className="max-w-2xl text-sm leading-relaxed text-slate-600">
-          Paste the message as it arrived. Review what the AI proposes, correct
-          anything wrong, then save. The original message is kept exactly as
-          pasted.
+          Paste the message as it arrived. Let the AI propose the details or
+          fill them in by hand, correct anything wrong, then save. The original
+          message is kept exactly as pasted.
         </p>
       </header>
 
@@ -385,7 +402,7 @@ export function CaptureForm() {
           id="raw-message"
           value={rawMessage}
           onChange={(event) => setRawMessage(event.target.value)}
-          readOnly={hasProposal}
+          readOnly={hasProposal && !manual}
           rows={6}
           placeholder="Paste a WhatsApp message, a Facebook DM, a website enquiry or phone-call notes…"
           className="mt-3 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 read-only:bg-slate-50"
@@ -393,14 +410,28 @@ export function CaptureForm() {
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {!hasProposal ? (
-            <button
-              type="button"
-              onClick={extract}
-              disabled={extracting || rawMessage.trim() === ''}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              {extracting ? 'Reading…' : 'Read message'}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={extract}
+                disabled={extracting || rawMessage.trim() === '' || !canUseAi}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {extracting
+                  ? 'Reading…'
+                  : canUseAi
+                    ? 'Read message'
+                    : 'AI extraction is off'}
+              </button>
+              <button
+                type="button"
+                onClick={startManual}
+                disabled={rawMessage.trim() === ''}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Fill in manually
+              </button>
+            </>
           ) : (
             <button
               type="button"
@@ -413,10 +444,20 @@ export function CaptureForm() {
           )}
           {hasProposal ? (
             <span className="text-xs text-slate-500">
-              The original message is locked while you review the proposal.
+              {manual
+                ? 'You can still edit the original message until you save.'
+                : 'The original message is locked while you review the proposal.'}
             </span>
           ) : null}
         </div>
+
+        {!canUseAi && !hasProposal ? (
+          <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            AI extraction is unavailable, so the Read message button is off.
+            Paste the message and choose Fill in manually — every field below
+            is editable.
+          </p>
+        ) : null}
 
         {extractError ? (
           <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -425,6 +466,25 @@ export function CaptureForm() {
         ) : null}
       </section>
 
+      {!hasProposal ? (
+        <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center">
+          <p className="text-sm font-semibold text-slate-800">
+            Nothing to review yet.
+          </p>
+          <p className="mx-auto mt-1 max-w-xl text-sm leading-relaxed text-slate-600">
+            Paste a message above, then{' '}
+            {canUseAi ? (
+              <>
+                choose <strong>Read message</strong> to get an AI proposal or{' '}
+              </>
+            ) : null}
+            choose <strong>Fill in manually</strong> to enter every field
+            yourself. Either way a saved enquiry starts in New and the pipeline
+            waits for you to move it.
+          </p>
+        </section>
+      ) : null}
+
       {hasProposal ? (
         <form
           onSubmit={save}
@@ -432,11 +492,12 @@ export function CaptureForm() {
         >
           <div>
             <p className="text-sm font-semibold text-slate-900">
-              2. Review the proposal
+              {manual ? '2. Enter the details' : '2. Review the proposal'}
             </p>
             <p className="mt-1 text-sm text-slate-600">
-              Everything here is editable except status — a saved enquiry
-              always starts in New.
+              {manual
+                ? 'Entered by hand, with no AI proposal. Every field is editable and a saved enquiry always starts in New.'
+                : 'Everything here is editable except status — a saved enquiry always starts in New.'}
             </p>
           </div>
 
@@ -642,9 +703,18 @@ export function CaptureForm() {
             </p>
           ) : null}
 
+          {rawMessage.trim() === '' ? (
+            <p className="text-xs font-medium text-amber-700">
+              The original message cannot be empty. Paste it in step 1 before
+              saving.
+            </p>
+          ) : null}
+
           <button
             type="submit"
-            disabled={saving || draft.name.trim() === ''}
+            disabled={
+              saving || draft.name.trim() === '' || rawMessage.trim() === ''
+            }
             className="self-start rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {saving ? 'Saving…' : 'Save enquiry'}

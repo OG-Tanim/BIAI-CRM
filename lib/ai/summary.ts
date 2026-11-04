@@ -2,6 +2,7 @@ import {
   AiResponseError,
   AiUnavailableError,
 } from '@/lib/ai/extractor';
+import { resolveAiMode } from '@/lib/ai/availability';
 import {
   SUMMARY_COUNT_TOKENS,
   type SummaryFacts,
@@ -152,18 +153,20 @@ type Env = Record<string, string | undefined>;
 export function createSummaryNarratorFromEnv(
   env: Env = process.env,
 ): SummaryNarrator {
-  if (env.MOCK_AI === '1') {
+  const mode = resolveAiMode(env);
+
+  if (mode === 'mock') {
     return createMockNarrator();
   }
 
-  const apiKey = env.OPENROUTER_API_KEY?.trim();
-  const model = env.OPENROUTER_MODEL?.trim();
-
-  if (!apiKey || !model) {
+  if (mode === 'unavailable') {
     return unavailableNarrator(
       'Set OPENROUTER_API_KEY and OPENROUTER_MODEL, or set MOCK_AI=1.',
     );
   }
+
+  const apiKey = env.OPENROUTER_API_KEY!.trim();
+  const model = env.OPENROUTER_MODEL!.trim();
 
   return createOpenRouterNarrator({
     apiKey,
