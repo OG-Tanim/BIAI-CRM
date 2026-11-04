@@ -4,13 +4,13 @@
 
 **Blocked by:** 02 — Extraction
 
-**Status:** ready-for-agent
+**Status:** complete
 
 **Read:** API contracts · Status transitions · Schema changes
 
 **Do not build:** the board, the follow-up queue, the weekly summary.
 
-- [ ] Saving creates exactly one enquiry, in New status, with the original message preserved verbatim
-- [ ] Saving a phone number that already exists warns and names the earlier enquiry, and the save still proceeds
-- [ ] The reply keeps its placeholders as a template; the filled version is stored separately and is what gets copied
-- [ ] Copying a reply with a placeholder still present warns instead of copying
+- [x] Saving creates exactly one enquiry, in New status, with the original message preserved verbatim
+- [x] Saving a phone number that already exists warns and names the earlier enquiry, and the save still proceeds
+- [x] The reply keeps its placeholders as a template; the filled version is stored separately and is what gets copied
+- [x] Copying a reply with a placeholder still present warns instead of copying
