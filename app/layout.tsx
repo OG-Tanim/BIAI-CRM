@@ -10,7 +10,9 @@ export const metadata: Metadata = {
 const NAV_LINKS = [
   { href: '/', label: 'Capture' },
   { href: '/pipeline', label: 'Pipeline' },
+  { href: '/follow-ups', label: 'Follow-ups' },
   { href: '/enquiries', label: 'List' },
+  { href: '/summary', label: 'Summary' },
 ];
 
 export default function RootLayout({

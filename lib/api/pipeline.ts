@@ -2,15 +2,12 @@ import { NextResponse } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { getDb } from '@/lib/db/client';
-import { enquiries } from '@/lib/db/schema';
+import { enquiries, type Enquiry } from '@/lib/db/schema';
 import type * as schema from '@/lib/db/schema';
-import {
-  STATUSES,
-  STATUS_LABELS,
-  type Interest,
-  type Kind,
-  type Status,
-} from '@/lib/domain/enquiry';
+import { toEnquiryDto, type EnquiryDto } from '@/lib/api/enquiry-dto';
+import { STATUSES, type Status } from '@/lib/domain/enquiry';
+import { STATUS_LABELS } from '@/lib/format';
+import { logFailure } from '@/lib/log';
 
 type Database = PostgresJsDatabase<typeof schema>;
 
@@ -26,21 +23,21 @@ export const PIPELINE_COLUMNS: ReadonlyArray<{
   label: string;
 }> = STATUSES.map((status) => ({ status, label: STATUS_LABELS[status] }));
 
-/** The fields a card shows. `age_seconds` is measured in the current status. */
-export type PipelineCard = {
-  id: string;
-  name: string;
-  company: string | null;
-  job_title: string | null;
-  phone: string | null;
-  interest: Interest;
-  kind: Kind;
-  status: Status;
-  needs_attention: boolean;
-  summary: string;
-  created_at: string;
-  last_contacted_at: string | null;
-  status_since: string;
+/** The fields a card shows — a projection of the enquiry DTO, not a second row mapper. */
+export type PipelineCard = Pick<
+  EnquiryDto,
+  | 'id'
+  | 'name'
+  | 'company'
+  | 'job_title'
+  | 'interest'
+  | 'kind'
+  | 'status'
+  | 'needs_attention'
+  | 'summary'
+  | 'last_contacted_at'
+> & {
+  /** Seconds since the last contact, or since creation when there was none. */
   age_seconds: number;
 };
 
@@ -57,29 +54,29 @@ export type PipelineResponse = {
   generated_at: string;
 };
 
-function toCard(row: typeof enquiries.$inferSelect, now: Date): PipelineCard {
-  // A move stamps last_contacted_at, so this is the moment the card entered
-  // its current status. A card that never moved has been here since creation.
-  const statusSince = row.lastContactedAt ?? row.createdAt;
+function toCard(row: Enquiry, now: Date): PipelineCard {
+  const enquiry = toEnquiryDto(row);
+
+  // The same clock the 48-hour rule uses: the last time the person was reached,
+  // or creation when nobody has reached them yet. This is not time-in-status;
+  // the schema has no column for that and the spec does not ask for one.
+  const lastActivity = row.lastContactedAt ?? row.createdAt;
   const ageSeconds = Math.max(
     0,
-    Math.floor((now.getTime() - statusSince.getTime()) / 1000),
+    Math.floor((now.getTime() - lastActivity.getTime()) / 1000),
   );
 
   return {
-    id: row.id,
-    name: row.name,
-    company: row.company,
-    job_title: row.jobTitle,
-    phone: row.phone,
-    interest: row.interest as Interest,
-    kind: row.kind as Kind,
-    status: row.status as Status,
-    needs_attention: row.needsAttention,
-    summary: row.summary,
-    created_at: row.createdAt.toISOString(),
-    last_contacted_at: row.lastContactedAt?.toISOString() ?? null,
-    status_since: statusSince.toISOString(),
+    id: enquiry.id,
+    name: enquiry.name,
+    company: enquiry.company,
+    job_title: enquiry.job_title,
+    interest: enquiry.interest,
+    kind: enquiry.kind,
+    status: enquiry.status,
+    needs_attention: enquiry.needs_attention,
+    summary: enquiry.summary,
+    last_contacted_at: enquiry.last_contacted_at,
     age_seconds: ageSeconds,
   };
 }
@@ -140,10 +137,7 @@ export function createPipelineHandler(
       const pipeline = await loadPipeline(db, now);
       return NextResponse.json(pipeline);
     } catch (error) {
-      console.error(
-        '[pipeline] load failed:',
-        error instanceof Error ? error.message : 'unknown error',
-      );
+      logFailure('pipeline', 'load', error);
 
       return NextResponse.json(
         { error: 'pipeline_failed', message: 'Could not load the pipeline.' },

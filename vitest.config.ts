@@ -10,5 +10,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // Route tests talk to a remote Neon branch; a cold connection can exceed
+    // the default five seconds without anything being wrong.
+    testTimeout: 20_000,
   },
 });

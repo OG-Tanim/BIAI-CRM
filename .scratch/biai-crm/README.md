@@ -48,14 +48,33 @@ They are load-bearing, not decoration:
 
 ## Code review, exactly twice
 
-After ticket 04 and again after 07:
+Both passes look backwards from a fixed point *before* the work, never from the commit that contains
+it. Pass the containing commit and the diff is empty, which the skill treats as a failure.
+
+### First pass — after ticket 04
 
 ```
-/code-review since <sha>
+/code-review since 400af12
 ```
 
-`<sha>` is the commit *before* the work you want reviewed — the `S3` commit for the first run, the
-`S4` commit for the second, so the second covers 05, 06 and 07 together.
+`400af12` is `S2: Capture & Save`, so the diff is exactly the pipeline card and nothing else.
+
+### Second pass — after ticket 07
+
+```
+/code-review since 4b825dc642cb6eb9a060e54bf8d69288fbee4904
+```
+
+That hash is git's empty tree. The diff runs from nothing to `HEAD`, so the final pass reviews the
+whole application rather than only the last three cards — the foundation and extraction code are
+covered exactly once, here.
+
+Two things to state when invoking it:
+
+- It is a **tree, not a commit**, so the skill's default `git diff <ref>...HEAD` fails with
+  `object ... is a tree, not a commit`. Use the two-dot form: `git diff 4b825dc..HEAD`.
+- Expect roughly **73 files and 9,400 lines**. This is the expensive pass by design; the first pass
+  exists so you are not reading the pipeline twice.
 
 ## Stopping mid-ticket
 

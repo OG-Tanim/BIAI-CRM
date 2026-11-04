@@ -1,5 +1,6 @@
 import { getDb } from '@/lib/db/client';
 import { loadPipeline, type PipelineResponse } from '@/lib/api/pipeline';
+import { logFailure } from '@/lib/log';
 import { PipelineBoard } from './pipeline-board';
 
 export const dynamic = 'force-dynamic';
@@ -10,10 +11,7 @@ export default async function PipelinePage() {
   try {
     pipeline = await loadPipeline(getDb());
   } catch (error) {
-    console.error(
-      '[pipeline page] load failed:',
-      error instanceof Error ? error.message : 'unknown error',
-    );
+    logFailure('pipeline page', 'load', error);
   }
 
   return (

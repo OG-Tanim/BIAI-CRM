@@ -3,16 +3,16 @@ import {
   fetchEnquiryList,
   parseEnquiryFilters,
   type EnquiryListResponse,
-} from '@/lib/api/enquiries';
+} from '@/lib/api/enquiry-list';
 import { getDb } from '@/lib/db/client';
+import { KINDS, STATUSES } from '@/lib/domain/enquiry';
 import {
   INTEREST_LABELS,
-  KINDS,
   KIND_LABELS,
-  STATUSES,
   STATUS_LABELS,
-} from '@/lib/domain/enquiry';
-import { formatDateTime } from '@/lib/format';
+  formatDateTime,
+} from '@/lib/format';
+import { logFailure } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,10 +38,7 @@ export default async function EnquiriesPage({
     try {
       list = await fetchEnquiryList(getDb(), filters);
     } catch (error) {
-      console.error(
-        '[enquiries page] list failed:',
-        error instanceof Error ? error.message : 'unknown error',
-      );
+      logFailure('enquiries page', 'list', error);
       loadError =
         'Could not load the enquiry list. Check the database connection and reload.';
     }

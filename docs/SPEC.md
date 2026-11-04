@@ -63,7 +63,7 @@ The AI is an assistant, not an actor. It cannot mark anything Paid, it cannot cr
 22. As a sales team member, I want each card to show the person's name, company, job title, interest, kind and age, so that I can triage without opening it.
 23. As a sales team member, I want to move a card between statuses, so that the board tracks what I have actually done.
 24. As a sales team member, I want to attach a short note whenever I change a status, so that I remember what was said and when.
-25. As a sales team member, I want to see how long each card has been in its current status, so that I know which deals are going stale.
+25. As a sales team member, I want to see how long since the last activity on each card, so that I know which deals are going stale.
 26. As a sales team member, I want a count of enquiries per column, so that I can see the shape of the pipeline instantly.
 27. As a sales team member, I want an explicit "needs attention" flag on a card, so that urgent cases stand out without being given a fake status.
 
@@ -138,6 +138,7 @@ This spec uses the following terms consistently. There is no pre-existing glossa
 - Free-tier models do not reliably support strict JSON-schema response formats, so extraction uses `response_format: { type: 'json_object' }`, with the schema stated in the prompt and Zod as the final authority on what is accepted.
 - The AI sits behind a single `AiExtractor` port so it can be replaced with a fake in tests and with canned responses when no key is available.
 - Rate limits and queueing are expected on the free tier: one retry with backoff on 429 and 5xx, then a clear failure that leaves the manual form usable.
+- A small header in the root layout links Capture, Pipeline and List, so no view is reachable only by typing its URL. It is shell, not a fourth view.
 
 ### Schema changes
 
@@ -261,7 +262,8 @@ The brief specifies "English or Banglish", but four of the twenty samples (#2, #
 ### Status transitions
 
 - Status is changed only by an explicit operator action.
-- Any transition out of `new` stamps `last_contacted_at = now()`.
+- Any transition out of `new` stamps `last_contacted_at = now()`. A later move leaves that time alone: it records where the deal got to, not that the person was reached again.
+- `needs_attention` is the operator's own mark and moves independently of status; setting or clearing it is not a status change and stamps nothing.
 - Appending a note without a status change does not move a deal or restamp contact time.
 - `paid` and `lost` are reachable from any status; there is no enforced state machine beyond that, because real sales do not follow one and a first version cannot afford to argue with the operator.
 
@@ -294,7 +296,7 @@ A single I/O-free module holding the decisions that are easy to get subtly wrong
 - `validateExtraction` — rejects an unknown `status` key if the model emits one anyway; coerces an invalid phone to `null`; preserves `null` phone when the message has none; nulls `suggested_reply` when a Bengali-script message comes back labelled `en` or carrying no Bengali text.
 - `hasBengaliScript` — true for #2, #7, #13, #18; false for the Banglish rows (#1, #4, #6, #9, #12, #15, #17) and the English rows, which is the whole point of the guard being cheap.
 - `isDueForFollowUp` — false at 47h59m, true at exactly 48h, true beyond; false for `paid`, `lost`, `spam`, `job_seeker`; true when `last_contacted_at` is stale even if `created_at` is recent.
-- `applyStatusChange` — `new → contacted` stamps `last_contacted_at`; a note-only update does not; `paid` is reachable only via this function, never from extraction.
+- `applyStatusChange` — `new → contacted` stamps `last_contacted_at`; a note-only update does not; a later move keeps the first contact time; the attention flag flips independently of status; `paid` is reachable only via this function, never from extraction.
 - `assertPlaceholdersAllowed` — rejects `{{cohort_two}}` because it is not on the allowlist; accepts all nine allowlisted tokens, including repeated use of one token.
 - `hasUnfilledPlaceholder` — true for `"the fee is {{price}}"`, false once every token has been replaced.
 

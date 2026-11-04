@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createEnquiryListHandler,
-  createEnquiryUpdateHandler,
   type EnquiryListResponse,
+} from '@/lib/api/enquiry-list';
+import {
+  createEnquiryUpdateHandler,
   type UpdateEnquiryResponse,
-} from '@/lib/api/enquiries';
+} from '@/lib/api/enquiry-update';
 import {
   createPipelineHandler,
   type PipelineResponse,
@@ -166,7 +168,7 @@ describe('GET /api/pipeline', () => {
     });
   });
 
-  it('shows the card fields and measures age in the current status', async () => {
+  it('shows the card fields and measures age since the last contact', async () => {
     await scenario(async ({ pipeline, seed }) => {
       const fresh = await seed({
         name: 'Nowshin',
@@ -203,13 +205,12 @@ describe('GET /api/pipeline', () => {
         needs_attention: true,
         summary: 'Wants AI training for forty people.',
         last_contacted_at: null,
-        status_since: OLD.toISOString(),
         age_seconds: (NOW.getTime() - OLD.getTime()) / 1000,
       });
 
       expect(contactedCard).toMatchObject({
         status: 'contacted',
-        status_since: '2026-11-04T10:00:00.000Z',
+        last_contacted_at: '2026-11-04T10:00:00.000Z',
         age_seconds: 2 * 60 * 60,
       });
     });
@@ -319,6 +320,85 @@ describe('PATCH /api/enquiries/:id', () => {
       expect(stored!.status).toBe('paid');
       expect(stored!.lastContactedAt).toEqual(NOW);
       expect(await notes()).toHaveLength(0);
+    });
+  });
+
+  it('keeps the contact time when a card moves again later', async () => {
+    await scenario(async ({ update, seed, rows, notes }) => {
+      const card = await seed({
+        status: 'contacted',
+        lastContactedAt: OLD,
+        createdAt: new Date('2026-10-20T08:00:00.000Z'),
+      });
+
+      const { response, body } = await update(card.id, {
+        status: 'interested',
+        note: 'Asked for the December schedule.',
+      });
+
+      expect(response.status).toBe(200);
+      expect(body.enquiry.status).toBe('interested');
+      expect(body.enquiry.last_contacted_at).toBe(OLD.toISOString());
+
+      const [stored] = await rows();
+      expect(stored!.status).toBe('interested');
+      expect(stored!.lastContactedAt).toEqual(OLD);
+      expect(await notes()).toHaveLength(1);
+    });
+  });
+
+  it('flags attention without moving the card, restamping or writing a note', async () => {
+    await scenario(async ({ update, seed, rows, notes }) => {
+      const card = await seed({ status: 'new', lastContactedAt: null });
+
+      const { response, body } = await update(card.id, {
+        needs_attention: true,
+      });
+
+      expect(response.status).toBe(200);
+      expect(body.enquiry.needs_attention).toBe(true);
+      expect(body.enquiry.status).toBe('new');
+      expect(body.enquiry.last_contacted_at).toBeNull();
+      expect(body.note).toBeNull();
+
+      const [stored] = await rows();
+      expect(stored!.needsAttention).toBe(true);
+      expect(stored!.lastContactedAt).toBeNull();
+      expect(await notes()).toHaveLength(0);
+    });
+  });
+
+  it('clears an attention flag that is already set', async () => {
+    await scenario(async ({ update, seed, rows }) => {
+      const card = await seed({
+        status: 'contacted',
+        lastContactedAt: OLD,
+        needsAttention: true,
+      });
+
+      const { response, body } = await update(card.id, {
+        needs_attention: false,
+      });
+
+      expect(response.status).toBe(200);
+      expect(body.enquiry.needs_attention).toBe(false);
+
+      const [stored] = await rows();
+      expect(stored!.needsAttention).toBe(false);
+      expect(stored!.lastContactedAt).toEqual(OLD);
+    });
+  });
+
+  it('rejects an attention flag that is not a boolean', async () => {
+    await scenario(async ({ update, seed, rows }) => {
+      const card = await seed({});
+
+      const { response } = await update(card.id, { needs_attention: 'yes' });
+
+      expect(response.status).toBe(422);
+
+      const [stored] = await rows();
+      expect(stored!.needsAttention).toBe(false);
     });
   });
 

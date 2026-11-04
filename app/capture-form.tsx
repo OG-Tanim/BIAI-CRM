@@ -1,7 +1,8 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import type { DuplicateSummary, EnquiryDto, SaveEnquiryResponse } from '@/lib/api/enquiries';
+import type { EnquiryDto } from '@/lib/api/enquiry-dto';
+import type { DuplicateSummary, SaveEnquiryResponse } from '@/lib/api/enquiries';
 import {
   UnfilledPlaceholderError,
   pendingPlaceholders,

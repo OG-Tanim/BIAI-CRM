@@ -5,7 +5,7 @@ by" is ticked here and in its own file.
 
 ## Frontier
 
-Next: **05 — Follow-up & Summary**
+Next: **06 — Test data & eval**
 
 | Card | Ticket                    | Blocked by | Done |
 | ---- | ------------------------- | ---------- | ---- |
@@ -13,7 +13,7 @@ Next: **05 — Follow-up & Summary**
 | S1   | 02-extraction             | 01         | [x]  |
 | S2   | 03-capture-and-save       | 02         | [x]  |
 | S3   | 04-pipeline               | 03         | [x]  |
-| S4   | 05-follow-up-and-summary  | 04         | [ ]  |
+| S4   | 05-follow-up-and-summary  | 04         | [x]  |
 | S5   | 06-test-data-and-eval     | 04         | [ ]  |
 | S6   | 07-hardening-and-handover | 05, 06     | [ ]  |
 
@@ -24,37 +24,75 @@ Newest first. One entry per session, in this shape:
 ```
 ### S<n> — <title> — <date>
 - Done:
+- Verified:
 - Not done:
 - Traps hit:
 - Next:
 ```
 
+### S4 — Follow-up & Summary — 2026-11-04
+
+- Done: `GET /api/reminders` returns sales leads in New or Contacted whose
+  `coalesce(last_contacted_at, created_at)` is at least 48 hours old, oldest first. The exclusions
+  (`kind = 'sales_lead'`, `status in ('new','contacted')`) are in the SQL before the time test, so
+  spam, job seekers, support, unclear messages, Paid and Lost never reach the client. `/follow-ups`
+  renders the queue with the waiting-since clock and age. `POST /api/summary` computes a seven-day
+  aggregate in SQL (received, received_by_kind, moved, stuck, leads_by_status) and asks an injected
+  `SummaryNarrator` to narrate it; the model returns `{{token}}` placeholders and
+  `renderSummaryNarration` fills them from the same facts, rejecting digits, unknown tokens or a
+  narrative with no count. `/summary` shows the facts even when narration is unavailable. The pure
+  modules are `lib/domain/follow-up.ts` (`isDueForFollowUp`, cutoff/basis) and `lib/domain/summary.ts`;
+  the API is one module per endpoint (`reminders`, `summary`). 152 tests (26 new across the two
+  seams); `pnpm typecheck` and `pnpm build` clean.
+- Verified: live on port 3104 with `MOCK_AI=1` against the testing branch and seven temporary
+  fixtures. `/api/reminders` returned 3 — the 72h creation, the 49h contact and the exactly-48h
+  contact — and omitted the 1h-fresh, spam, job-seeker and paid rows. `/api/summary` returned
+  received 5, moved 4, stuck 3, and the mock narrator rendered those exact numbers. Both pages
+  returned 200. Fixtures were then deleted; `pnpm db:verify` reports both branches at enquiries=0,
+  notes=0. After the final pass: `pnpm test` 152 green, `tsc --noEmit` clean, `next build` clean.
+- Not done: no notification, email or scheduled job, per the ticket. The summary is generated when
+  the page or endpoint is called, not on a timer.
+- Traps hit: a raw `sql` fragment in Drizzle passes a `Date` parameter straight to postgres-js,
+  which throws `ERR_INVALID_ARG_TYPE`; the cutoff and window are sent as ISO strings cast with
+  `::timestamptz`. The ticket's boundary is inclusive ("at exactly 48h it is present"), so the SQL is
+  `<= now - 48h` rather than the `<` shorthand in the spec. `stuck` reuses the queue's exact clock.
+  The rendered timestamps now name `Asia/Dhaka` explicitly; only the display moves, the arithmetic
+  stays in UTC. The route tests clear the table inside the rollback transaction, so the summary
+  counts stay deterministic once ticket 06 seeds the branch.
+- Next: start S5 — Test data & eval (`06-test-data-and-eval.md`).
+
 ### S3 — Pipeline — 2026-11-04
 
 - Done: the board at `/pipeline` has the five columns New → Lost, per-column counts, and cards
-  showing name, company, job title, interest, kind, a needs-attention flag and age in the current
-  status. `GET /api/pipeline` selects only `kind = 'sales_lead'` **in the query**, so spam, job
-  seekers, support and unclear messages never reach the view. `PATCH /api/enquiries/:id` moves a
-  card, stamps `last_contacted_at` and appends a note; a note alone (or a repeated status plus a
-  note) moves nothing and restamps nothing. `GET /api/enquiries?status=&kind=` backs the list view
-  at `/enquiries`, which deliberately shows every kind so a support thread or job seeker can be
-  found outside the board. The pure module gained `applyStatusChange`; the list filter parser and
-  the three route handlers live beside the existing enquiry handlers. 118 tests (21 new across the
-  two seams); `pnpm typecheck` and `pnpm build` clean.
+  showing name, company, job title, interest, kind, a needs-attention flag and age since the last
+  contact (from creation until someone is reached). `GET /api/pipeline` selects only
+  `kind = 'sales_lead'` **in the query**, so spam, job seekers, support and unclear messages never
+  reach the view. `PATCH /api/enquiries/:id` moves a card, appends a note and sets or clears the
+  attention flag: leaving New stamps `last_contacted_at`, a later move keeps the time it already
+  had, and a note or a flag on its own changes nothing else. The move and its note share one
+  transaction, so a card cannot end up moved with its note missing. `GET /api/enquiries?status=&kind=`
+  backs the list view at `/enquiries`, which deliberately shows every kind so a support thread or
+  job seeker can be found outside the board. The pure module gained `applyStatusChange`; the API
+  is one module per endpoint (`enquiries`, `enquiry-list`, `enquiry-update`, `enquiry-dto`,
+  `pipeline`), with one row-to-JSON mapper and one `logFailure` helper. 126 tests (29 new across
+  the two seams); `pnpm typecheck` and `pnpm build` clean.
 - Verified: live on port 3103 against the testing branch with five fixtures created through the
   API. The board showed 2 leads (New 1, Interested 1) and omitted the spam, job-seeker and support
   rows; moving a New card to Interested returned a fresh `last_contacted_at` and the note; a
   note-only update left the card in New with `last_contacted_at: null`; `?status=new&kind=sales_lead`
-  returned Rafiq alone, `?kind=spam` returned the bot, and `?status=pending` returned 400. A
-  backdated row rendered as "In New for 3d". Fixtures were then deleted; `pnpm db:verify` reports
-  both branches at enquiries=0, notes=0.
+  returned Rafiq alone, `?kind=spam` returned the bot, and `?status=pending` returned 400. That
+  live pass predates the review, so the card clock it saw as "In New for 3d" now reads
+  "Created 3d ago". After the review: `pnpm test` 126 green — the route suite ran against the
+  testing branch inside rollback transactions — and `tsc --noEmit` clean. Fixtures were then
+  deleted; `pnpm db:verify` reports both branches at enquiries=0, notes=0.
 - Not done: nothing in the ticket. The follow-up queue, weekly summary and seed data remain for
   S4/S5.
-- Traps hit: the card clock is `COALESCE(last_contacted_at, created_at)`, and every status move
-  stamps `last_contacted_at`; a note never does. The route-test harness moved to
-  `tests/support/database.ts` so the new suite reuses the rollback transaction rather than opening
-  a second pattern. `PATCH` validates a UUID before querying so a malformed id is a clean 404
-  rather than a Postgres cast error.
+- Traps hit: the card clock is `COALESCE(last_contacted_at, created_at)` — the same basis the
+  48-hour rule will use — and only leaving New stamps it. Stamping every move would let marking a
+  card Lost reset the follow-up clock, so S4 must not reintroduce it. The route-test harness moved
+  to `tests/support/database.ts` so the new suite reuses the rollback transaction rather than
+  opening a second pattern. `PATCH` validates a UUID before querying so a malformed id is a clean
+  404 rather than a Postgres cast error.
 - Next: start S4 — Follow-up & Summary (`05-follow-up-and-summary.md`).
 
 ### S2 — Capture & Save — 2026-11-04

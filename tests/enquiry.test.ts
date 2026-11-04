@@ -250,7 +250,7 @@ describe('applyStatusChange', () => {
 
   it('stamps contact time when a card moves out of New', () => {
     const decision = applyStatusChange(
-      { status: 'new', lastContactedAt: null },
+      { status: 'new', lastContactedAt: null, needsAttention: false },
       { status: 'contacted', note: 'Called and introduced ourselves.' },
       now,
     );
@@ -262,21 +262,22 @@ describe('applyStatusChange', () => {
     expect(decision.changed).toBe(true);
   });
 
-  it('stamps contact time on a later move too', () => {
+  it('keeps the first contact time when a card moves again later', () => {
     const decision = applyStatusChange(
-      { status: 'contacted', lastContactedAt: earlier },
+      { status: 'contacted', lastContactedAt: earlier, needsAttention: false },
       { status: 'interested' },
       now,
     );
 
     expect(decision.status).toBe('interested');
-    expect(decision.lastContactedAt).toEqual(now);
+    expect(decision.lastContactedAt).toEqual(earlier);
     expect(decision.note).toBeNull();
+    expect(decision.moved).toBe(true);
   });
 
   it('a note with no status change moves nothing and restamps nothing', () => {
     const decision = applyStatusChange(
-      { status: 'contacted', lastContactedAt: earlier },
+      { status: 'contacted', lastContactedAt: earlier, needsAttention: false },
       { note: 'Left a voicemail.' },
       now,
     );
@@ -290,7 +291,7 @@ describe('applyStatusChange', () => {
 
   it('treats a repeated status plus a note as note-only', () => {
     const decision = applyStatusChange(
-      { status: 'interested', lastContactedAt: earlier },
+      { status: 'interested', lastContactedAt: earlier, needsAttention: false },
       { status: 'interested', note: 'Sent the schedule.' },
       now,
     );
@@ -302,25 +303,36 @@ describe('applyStatusChange', () => {
 
   it('reaches paid from any status, and only through this function', () => {
     const decision = applyStatusChange(
-      { status: 'interested', lastContactedAt: earlier },
+      { status: 'interested', lastContactedAt: earlier, needsAttention: false },
       { status: 'paid', note: 'Payment verified in the bank.' },
       now,
     );
 
     expect(decision.status).toBe('paid');
-    expect(decision.lastContactedAt).toEqual(now);
+    expect(decision.lastContactedAt).toEqual(earlier);
+  });
+
+  it('clearing a card to lost does not reset the follow-up clock', () => {
+    const decision = applyStatusChange(
+      { status: 'contacted', lastContactedAt: earlier, needsAttention: false },
+      { status: 'lost' },
+      now,
+    );
+
+    expect(decision.status).toBe('lost');
+    expect(decision.lastContactedAt).toEqual(earlier);
   });
 
   it('trims a note and treats a blank one as absent', () => {
     const trimmed = applyStatusChange(
-      { status: 'new', lastContactedAt: null },
+      { status: 'new', lastContactedAt: null, needsAttention: false },
       { note: '  Called.  ' },
       now,
     );
     expect(trimmed.note).toBe('Called.');
 
     const blank = applyStatusChange(
-      { status: 'new', lastContactedAt: null },
+      { status: 'new', lastContactedAt: null, needsAttention: false },
       { note: '   ' },
       now,
     );
@@ -328,10 +340,54 @@ describe('applyStatusChange', () => {
     expect(blank.changed).toBe(false);
   });
 
+  it('sets the attention flag without moving the card or restamping contact time', () => {
+    const decision = applyStatusChange(
+      { status: 'contacted', lastContactedAt: earlier, needsAttention: false },
+      { needs_attention: true },
+      now,
+    );
+
+    expect(decision.needsAttention).toBe(true);
+    expect(decision.attentionChanged).toBe(true);
+    expect(decision.status).toBe('contacted');
+    expect(decision.lastContactedAt).toEqual(earlier);
+    expect(decision.moved).toBe(false);
+    expect(decision.changed).toBe(true);
+  });
+
+  it('clears the attention flag, and an unchanged flag is no change at all', () => {
+    const cleared = applyStatusChange(
+      { status: 'new', lastContactedAt: null, needsAttention: true },
+      { needs_attention: false },
+      now,
+    );
+    expect(cleared.needsAttention).toBe(false);
+    expect(cleared.changed).toBe(true);
+
+    const unchanged = applyStatusChange(
+      { status: 'new', lastContactedAt: null, needsAttention: true },
+      { needs_attention: true },
+      now,
+    );
+    expect(unchanged.needsAttention).toBe(true);
+    expect(unchanged.attentionChanged).toBe(false);
+    expect(unchanged.changed).toBe(false);
+  });
+
+  it('rejects an attention flag that is not a boolean', () => {
+    expect(() =>
+      applyStatusChange(
+        { status: 'new', lastContactedAt: null, needsAttention: false },
+        { needs_attention: 'yes' },
+        now,
+      ),
+    ).toThrow(StatusChangeValidationError);
+  });
+
   it('rejects an unknown status without changing anything', () => {
     expect(() =>
       applyStatusChange(
-        { status: 'new', lastContactedAt: null },
+        { status: 'new', lastContactedAt: null, needsAttention: false },
         { status: 'negotiating' },
         now,
       ),
@@ -341,7 +397,7 @@ describe('applyStatusChange', () => {
   it('rejects a non-text note', () => {
     expect(() =>
       applyStatusChange(
-        { status: 'new', lastContactedAt: null },
+        { status: 'new', lastContactedAt: null, needsAttention: false },
         { note: 42 },
         now,
       ),

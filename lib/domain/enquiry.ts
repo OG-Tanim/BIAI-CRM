@@ -42,29 +42,6 @@ export type Status = (typeof STATUSES)[number];
 /** The only status a save may produce. The operator changes it later, never the form. */
 export const NEW_STATUS = 'new' satisfies Status;
 
-export const STATUS_LABELS: Record<Status, string> = {
-  new: 'New',
-  contacted: 'Contacted',
-  interested: 'Interested',
-  paid: 'Paid',
-  lost: 'Lost',
-};
-
-export const KIND_LABELS: Record<Kind, string> = {
-  sales_lead: 'Sales lead',
-  job_seeker: 'Job seeker',
-  support: 'Support',
-  spam: 'Spam',
-  unclear: 'Unclear',
-};
-
-export const INTEREST_LABELS: Record<Interest, string> = {
-  bootcamp: 'Bootcamp',
-  fellowship: 'Fellowship',
-  corporate: 'Corporate training',
-  unclear: 'Unclear',
-};
-
 /**
  * What a save writes. Deliberately not the database row type: the domain
  * module has no idea a database exists.
@@ -284,27 +261,42 @@ function isStatus(value: string): value is Status {
 export type StatusChangeDecision = {
   status: Status;
   lastContactedAt: Date | null;
+  needsAttention: boolean;
   note: string | null;
   /** True only when the status actually differs from the current one. */
   moved: boolean;
-  /** False for a request that changes neither the status nor a non-blank note. */
+  /** True only when the flag actually flips. */
+  attentionChanged: boolean;
+  /** False for a request that changes no status, no flag and no non-blank note. */
   changed: boolean;
 };
 
 /**
- * Decide what a card move actually writes.
+ * Decide what a card update actually writes.
  *
- * A move is an explicit operator action and stamps `lastContactedAt` with the
- * supplied clock. A note appended without a move — including a request that
- * repeats the current status — changes no status and restamps no contact time:
- * writing down what was said is not the same as having just said it.
+ * A move is an explicit operator action. Leaving `new` is the moment the person
+ * was first contacted, so that and only that stamps `lastContactedAt` with the
+ * supplied clock: a later move records where the deal got to, not that anyone
+ * picked up the phone again. Otherwise marking a card `lost` would reset the
+ * 48-hour clock it is meant to measure.
+ *
+ * A note appended without a move — including a request that repeats the
+ * current status — changes no status and restamps no contact time: writing down
+ * what was said is not the same as having just said it.
+ *
+ * The attention flag is an operator's own mark, independent of status, so it
+ * can be set or cleared on its own and never implies a move.
  *
  * There is deliberately no state machine. `paid` and `lost` are reachable from
  * anywhere, and this function is the only way a status moves at all.
  */
 export function applyStatusChange(
-  current: { status: Status; lastContactedAt: Date | null },
-  request: { status?: unknown; note?: unknown },
+  current: {
+    status: Status;
+    lastContactedAt: Date | null;
+    needsAttention: boolean;
+  },
+  request: { status?: unknown; note?: unknown; needs_attention?: unknown },
   now: Date,
 ): StatusChangeDecision {
   const issues: string[] = [];
@@ -332,18 +324,35 @@ export function applyStatusChange(
     }
   }
 
+  let requestedAttention: boolean | null = null;
+
+  if (request.needs_attention !== undefined) {
+    if (typeof request.needs_attention !== 'boolean') {
+      issues.push('needs_attention: must be true or false.');
+    } else {
+      requestedAttention = request.needs_attention;
+    }
+  }
+
   if (issues.length > 0) {
     throw new StatusChangeValidationError(issues);
   }
 
   const moved = requestedStatus !== null && requestedStatus !== current.status;
   const status = moved && requestedStatus !== null ? requestedStatus : current.status;
+  const attentionChanged =
+    requestedAttention !== null && requestedAttention !== current.needsAttention;
 
   return {
     status,
-    lastContactedAt: moved ? now : current.lastContactedAt,
+    lastContactedAt:
+      moved && current.status === NEW_STATUS ? now : current.lastContactedAt,
+    needsAttention: attentionChanged
+      ? (requestedAttention as boolean)
+      : current.needsAttention,
     note,
     moved,
-    changed: moved || note !== null,
+    attentionChanged,
+    changed: moved || attentionChanged || note !== null,
   };
 }

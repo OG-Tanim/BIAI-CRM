@@ -5,16 +5,19 @@ import type {
   PipelineCard,
   PipelineResponse,
 } from '@/lib/api/pipeline';
+import { STATUSES, type Status } from '@/lib/domain/enquiry';
 import {
   INTEREST_LABELS,
   KIND_LABELS,
-  STATUSES,
   STATUS_LABELS,
-  type Status,
-} from '@/lib/domain/enquiry';
-import { formatAge } from '@/lib/format';
+  formatAge,
+} from '@/lib/format';
 
-type UpdateBody = { status?: Status; note?: string };
+type UpdateBody = {
+  status?: Status;
+  note?: string;
+  needs_attention?: boolean;
+};
 type UpdateResult = Promise<boolean>;
 
 function messageFrom(payload: unknown, fallback: string): string {
@@ -172,23 +175,26 @@ function BoardCard({
     setStatus(card.status);
   }, [card.status]);
 
-  async function move() {
-    const updated = await onUpdate(card.id, { status, note });
+  /**
+   * One card, one request. `keepDraft` leaves the note box and the open panel
+   * alone: the attention flag is a separate act from writing down a call.
+   */
+  async function submit(
+    body: UpdateBody,
+    { keepDraft = false }: { keepDraft?: boolean } = {},
+  ) {
+    const updated = await onUpdate(card.id, body);
 
-    if (updated) {
+    if (updated && !keepDraft) {
       setNote('');
       setOpen(false);
     }
   }
 
-  async function saveNote() {
-    const updated = await onUpdate(card.id, { note });
-
-    if (updated) {
-      setNote('');
-      setOpen(false);
-    }
-  }
+  const moveCard = () => submit({ status, note });
+  const saveNoteOnly = () => submit({ note });
+  const toggleAttention = () =>
+    submit({ needs_attention: !card.needs_attention }, { keepDraft: true });
 
   return (
     <article
@@ -228,7 +234,8 @@ function BoardCard({
       ) : null}
 
       <p className="mt-2 text-[11px] text-slate-500">
-        In {STATUS_LABELS[card.status]} for {formatAge(card.age_seconds)}
+        {card.last_contacted_at ? 'Contacted' : 'Created'}{' '}
+        {formatAge(card.age_seconds)}
       </p>
 
       <button
@@ -271,7 +278,7 @@ function BoardCard({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={move}
+              onClick={moveCard}
               disabled={busy || status === card.status}
               className="rounded-lg bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
@@ -279,17 +286,26 @@ function BoardCard({
             </button>
             <button
               type="button"
-              onClick={saveNote}
+              onClick={saveNoteOnly}
               disabled={busy || note.trim() === ''}
               className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Save note only
             </button>
+            <button
+              type="button"
+              onClick={toggleAttention}
+              disabled={busy}
+              className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {card.needs_attention ? 'Clear attention' : 'Flag attention'}
+            </button>
           </div>
 
           <p className="text-[10px] leading-relaxed text-slate-500">
-            Moving stamps the contact time and appends the note. A note on its
-            own changes nothing else.
+            Leaving New stamps the contact time and appends the note; a later
+            move keeps the contact time it already had. A note or the attention
+            flag on its own changes nothing else.
           </p>
         </div>
       ) : null}
