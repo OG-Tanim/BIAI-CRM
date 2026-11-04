@@ -23,6 +23,9 @@ importers:
       react-dom:
         specifier: 19.3.1
         version: 19.3.1(react@19.3.1)
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@tailwindcss/postcss':
         specifier: 4.3.4
@@ -1434,6 +1437,9 @@ packages:
     engines: {node: '>=20.11'}
     hasBin: true
 
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
 snapshots:
 
   '@alloc/quick-lru@5.3.0': {}
@@ -2367,3 +2373,5 @@ snapshots:
       - msw
 
   why-is-node-running@3.2.1: {}
+
+  zod@3.25.76: {}

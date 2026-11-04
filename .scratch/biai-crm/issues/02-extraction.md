@@ -4,16 +4,16 @@
 
 **Blocked by:** 01 — Foundation
 
-**Status:** ready-for-agent
+**Status:** complete
 
 **Read:** Extraction contract · Reply placeholders · Reply language
 
 **Do not build:** any screen, any persistence, any status change.
 
-- [ ] A Banglish message returns every field, and no status field appears in the response
-- [ ] A sender line carrying a role and a company yields the role and the company separately, with the person's name clean
-- [ ] A message containing no phone number returns no phone rather than a guess
-- [ ] A Bangla-script message receives a Bangla reply, and a reply failing that check comes back empty rather than in English
-- [ ] A reply never states a price, date, duration, discount, refund term, certificate status or payment method; those appear as placeholders
-- [ ] A placeholder outside the agreed set voids the whole reply rather than being passed through
-- [ ] Extracting writes nothing to the database
+- [x] A Banglish message returns every field, and no status field appears in the response
+- [x] A sender line carrying a role and a company yields the role and the company separately, with the person's name clean
+- [x] A message containing no phone number returns no phone rather than a guess
+- [x] A Bangla-script message receives a Bangla reply, and a reply failing that check comes back empty rather than in English
+- [x] A reply never states a price, date, duration, discount, refund term, certificate status or payment method; those appear as placeholders
+- [x] A placeholder outside the agreed set voids the whole reply rather than being passed through
+- [x] Extracting writes nothing to the database

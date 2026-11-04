@@ -5,12 +5,12 @@ by" is ticked here and in its own file.
 
 ## Frontier
 
-Next: **02 — Extraction**
+Next: **03 — Capture & Save**
 
 | Card | Ticket                    | Blocked by | Done |
 | ---- | ------------------------- | ---------- | ---- |
 | S0   | 01-foundation             | —          | [x]  |
-| S1   | 02-extraction             | 01         | [ ]  |
+| S1   | 02-extraction             | 01         | [x]  |
 | S2   | 03-capture-and-save       | 02         | [ ]  |
 | S3   | 04-pipeline               | 03         | [ ]  |
 | S4   | 05-follow-up-and-summary  | 04         | [ ]  |
@@ -28,6 +28,28 @@ Newest first. One entry per session, in this shape:
 - Traps hit:
 - Next:
 ```
+
+### S1 — Extraction — 2026-11-04
+
+- Done: `POST /api/extract` turns one pasted message into the 12-key extraction contract
+  (`suggested_reply` is nullable), with no `status` key and no database access. The pure domain
+  module `lib/domain/extraction.ts` holds `validateExtraction`, `hasBengaliScript`,
+  `assertPlaceholdersAllowed`, `hasUnfilledPlaceholder` and `normalizePhone`: invalid nullable
+  fields become null, an invented `{{token}}` voids the reply, and a Bangla-script message whose
+  reply is not labelled `bn` and written in Bengali script comes back empty rather than in
+  English. AI sits behind the injected `AiExtractor` port with an OpenRouter implementation and
+  canned fixtures for `MOCK_AI=1`. 64 tests at the two seams (pure module + HTTP route);
+  `pnpm typecheck` and `pnpm build` clean.
+- Verified: live on port 3102 with `MOCK_AI=1`. #17 returned every field and no status; #3 split
+  `Mahmud Hasan` / `Managing Director` / `Gazipur textile company`; #2 returned a Bengali reply
+  with `phone: null`; #1 carried `{{price}}` and `{{payment_method}}` and no digits. `pnpm
+  db:verify` before and after the calls reported both branches at enquiries=0, notes=0.
+- Not done: nothing in the ticket. Screens, persistence and status changes remain out of scope
+  for S2.
+- Traps hit: Zod was missing from the scaffold, so 3.25.76 was added. `pnpm start -- -p 3102`
+  forwards the `--` to Next, which then looks for a directory named `-p`; use
+  `./node_modules/.bin/next start -p <port>`.
+- Next: start S2 — Capture & Save (`03-capture-and-save.md`).
 
 ### S0 — Foundation — 2026-11-04
 
