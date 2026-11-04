@@ -4,6 +4,10 @@ import {
   type Kind,
   type Status,
 } from '@/lib/domain/enquiry';
+import {
+  placeholderTokens,
+  replacePlaceholders,
+} from '@/lib/domain/placeholders';
 
 /**
  * I/O-free weekly-summary decisions.
@@ -32,7 +36,7 @@ export type SummaryFacts = {
   /** Every enquiry created inside the window, all kinds. */
   received: number;
   received_by_kind: Record<Kind, number>;
-  /** Sales leads no longer New with activity inside the window. */
+  /** Sales leads whose last status move was inside the window. */
   moved: number;
   /** Sales leads New or Contacted with no contact for at least 48 hours. */
   stuck: number;
@@ -106,16 +110,7 @@ export function emptyStatusCounts(): Record<Status, number> {
   >;
 }
 
-const PLACEHOLDER = /\{\{([^{}]*)\}\}/g;
-const DIGITS = /\d/;
-
-export function summaryPlaceholders(template: string): string[] {
-  const tokens = new Set<string>();
-  for (const match of template.matchAll(PLACEHOLDER)) {
-    tokens.add((match[1] ?? '').trim());
-  }
-  return [...tokens];
-}
+const DIGITS = /[0-9\u09E6-\u09EF]/;
 
 /**
  * Turn the model's prose into the narrative the page shows.
@@ -123,7 +118,8 @@ export function summaryPlaceholders(template: string): string[] {
  * The model is asked for placeholders, never digits. Requiring at least one
  * placeholder is what makes the result a summary of the counts rather than a
  * generic sentence; rejecting digits is what stops a remembered or invented
- * number reaching a reader.
+ * number reaching a reader. Bengali digits count as digits too: the narration
+ * is English, so a numeral of any script is a number the model supplied.
  */
 export function renderSummaryNarration(
   template: string,
@@ -143,7 +139,7 @@ export function renderSummaryNarration(
   }
 
   const values = summaryCountValues(facts);
-  const tokens = summaryPlaceholders(prose);
+  const tokens = placeholderTokens(prose);
   const unknown = tokens.filter(
     (token) => !(SUMMARY_COUNT_TOKENS as readonly string[]).includes(token),
   );
@@ -162,8 +158,8 @@ export function renderSummaryNarration(
     throw new SummaryNarrationError(issues);
   }
 
-  return prose.replace(
-    PLACEHOLDER,
-    (_match, token: string) => String(values[token.trim() as SummaryCountToken]),
+  return replacePlaceholders(
+    prose,
+    (token) => String(values[token as SummaryCountToken]),
   );
 }

@@ -5,6 +5,8 @@ import { fetchFollowUps } from '@/lib/api/reminders';
 import { loadPipeline } from '@/lib/api/pipeline';
 import { loadSummaryFacts } from '@/lib/api/summary';
 import { resolveSeedTarget } from '@/lib/db/branch';
+import { isDueForFollowUp } from '@/lib/domain/follow-up';
+import type { Kind, Status } from '@/lib/domain/enquiry';
 import * as schema from '@/lib/db/schema';
 import { enquiries, notes } from '@/lib/db/schema';
 import { loadEnv } from './env';
@@ -27,8 +29,6 @@ import {
  */
 
 loadEnv();
-
-const FOLLOW_UP_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 class SeedError extends Error {}
 
@@ -128,13 +128,20 @@ async function main(): Promise<void> {
       (sum, count) => sum + count,
       0,
     );
-    const queueCutoff = now.getTime() - FOLLOW_UP_WINDOW_MS;
     const queueExpected = rows.filter((row) => {
-      if (row.kind !== 'sales_lead') return false;
-      if (row.status !== 'new' && row.status !== 'contacted') return false;
+      const createdAt = row.createdAt instanceof Date ? row.createdAt : now;
+      const lastContactedAt =
+        row.lastContactedAt instanceof Date ? row.lastContactedAt : null;
 
-      const basis = row.lastContactedAt ?? row.createdAt;
-      return basis instanceof Date && basis.getTime() <= queueCutoff;
+      return isDueForFollowUp(
+        {
+          status: row.status as Status,
+          kind: row.kind as Kind,
+          createdAt,
+          lastContactedAt,
+        },
+        now,
+      );
     }).length;
 
     console.log(

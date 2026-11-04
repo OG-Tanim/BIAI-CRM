@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { TransactionRollbackError } from 'drizzle-orm/errors';
 import postgres from 'postgres';
 import * as schema from '@/lib/db/schema';
+import { sameDatabase } from '@/lib/db/branch';
 
 /**
  * The shared database harness for seam-2 route tests.
@@ -26,9 +27,12 @@ if (!url) {
   );
 }
 
-if (process.env.DATABASE_URL && process.env.DATABASE_URL === url) {
+if (
+  process.env.DATABASE_URL &&
+  sameDatabase(process.env.DATABASE_URL, url)
+) {
   throw new Error(
-    'DATABASE_URL and TEST_DATABASE_URL are identical. Refusing to run route tests.',
+    'DATABASE_URL and TEST_DATABASE_URL name the same database. Refusing to run route tests.',
   );
 }
 

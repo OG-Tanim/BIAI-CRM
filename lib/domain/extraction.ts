@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  hasUnfilledPlaceholder,
+  placeholderTokens,
+} from '@/lib/domain/placeholders';
+
+export { hasUnfilledPlaceholder };
 
 /**
  * I/O-free extraction decisions.
@@ -82,7 +88,6 @@ export class PlaceholderNotAllowedError extends Error {
 
 const BENGALI_SCRIPT = /[\u0980-\u09FF]/;
 const BENGALI_DIGITS = '০১২৩৪৫৬৭৮৯';
-const PLACEHOLDER_TOKEN = /\{\{([^{}]*)\}\}/g;
 
 /**
  * The one deterministic language fact: does this text use Bengali script?
@@ -125,20 +130,11 @@ export function normalizePhone(value: unknown): string | null {
  * `validateExtraction`, which voids the reply instead of failing the request.
  */
 export function assertPlaceholdersAllowed(reply: string): void {
-  for (const match of reply.matchAll(PLACEHOLDER_TOKEN)) {
-    const token = match[1] ?? '';
+  for (const token of placeholderTokens(reply)) {
     if (!allowedPlaceholderSet.has(token)) {
       throw new PlaceholderNotAllowedError(token);
     }
   }
-}
-
-/**
- * True while a reply still has a template token in it. Guards the copy action:
- * saving a draft is fine, sending `{{price}}` to a customer is not.
- */
-export function hasUnfilledPlaceholder(reply: string | null | undefined): boolean {
-  return typeof reply === 'string' && reply.includes('{{');
 }
 
 const nullableText = z.preprocess(

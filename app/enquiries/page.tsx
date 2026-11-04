@@ -1,9 +1,11 @@
 import Link from 'next/link';
+import { PageLoadError } from '@/app/_components/page-load-error';
 import {
   fetchEnquiryList,
   parseEnquiryFilters,
   type EnquiryListResponse,
 } from '@/lib/api/enquiry-list';
+import { loadPageData } from '@/lib/api/page-load';
 import { getDb } from '@/lib/db/client';
 import { KINDS, STATUSES } from '@/lib/domain/enquiry';
 import {
@@ -12,9 +14,11 @@ import {
   STATUS_LABELS,
   formatDateTime,
 } from '@/lib/format';
-import { logFailure } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
+
+const LOAD_FAILURE =
+  'Could not load the enquiry list. Check the database connection and reload.';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -32,18 +36,16 @@ export default async function EnquiriesPage({
   });
   const filtered = filters.status !== null || filters.kind !== null;
 
-  let list: EnquiryListResponse | null = null;
-  let loadError: string | null = null;
+  const loaded =
+    issues.length === 0
+      ? await loadPageData<EnquiryListResponse>(
+          { label: 'enquiries page', action: 'list', failure: LOAD_FAILURE },
+          () => fetchEnquiryList(getDb(), filters),
+        )
+      : { data: null, error: null };
 
-  if (issues.length === 0) {
-    try {
-      list = await fetchEnquiryList(getDb(), filters);
-    } catch (error) {
-      logFailure('enquiries page', 'list', error);
-      loadError =
-        'Could not load the enquiry list. Check the database connection and reload.';
-    }
-  }
+  const list = loaded.data;
+  const loadError = loaded.error;
 
   return (
     <main className="mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-7xl flex-col gap-6 px-6 py-8">
@@ -120,14 +122,7 @@ export default async function EnquiriesPage({
         </p>
       ) : null}
 
-      {loadError ? (
-        <p
-          role="alert"
-          className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800"
-        >
-          {loadError}
-        </p>
-      ) : null}
+      {loadError ? <PageLoadError message={loadError} /> : null}
 
       {list ? (
         list.total === 0 ? (
@@ -186,6 +181,9 @@ export default async function EnquiriesPage({
                     <th scope="col" className="px-4 py-2 font-medium">
                       Last contacted
                     </th>
+                    <th scope="col" className="px-4 py-2 font-medium">
+                      Detail
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -193,9 +191,12 @@ export default async function EnquiriesPage({
                     <tr key={enquiry.id} className="align-top">
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium text-slate-900">
+                          <Link
+                            href={`/enquiries/${enquiry.id}`}
+                            className="font-medium text-slate-900 underline-offset-2 hover:underline"
+                          >
                             {enquiry.name}
-                          </span>
+                          </Link>
                           {enquiry.needs_attention ? (
                             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
                               Attention
@@ -230,6 +231,14 @@ export default async function EnquiriesPage({
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">
                         {formatDateTime(enquiry.last_contacted_at)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs">
+                        <Link
+                          href={`/enquiries/${enquiry.id}`}
+                          className="font-medium text-slate-700 hover:text-slate-900"
+                        >
+                          Open
+                        </Link>
                       </td>
                     </tr>
                   ))}

@@ -1,7 +1,5 @@
-import {
-  AiResponseError,
-  AiUnavailableError,
-} from '@/lib/ai/extractor';
+import { AiUnavailableError } from '@/lib/ai/errors';
+import { createOpenRouterClient } from '@/lib/ai/openrouter';
 import { resolveAiMode } from '@/lib/ai/availability';
 import {
   SUMMARY_COUNT_TOKENS,
@@ -39,7 +37,7 @@ RULES, highest priority first:
 WHAT THE FACTS MEAN:
 - received: every enquiry created in the last seven days.
 - received_by_kind: those enquiries split by kind. sales_lead is genuine sales interest; job_seeker, support, spam and unclear are not deals.
-- moved: sales leads that are no longer New and were touched in the last seven days.
+- moved: sales leads that changed status in the last seven days.
 - stuck: sales leads in New or Contacted that nobody has contacted for at least 48 hours.
 - leads_by_status: the current shape of the sales pipeline.
 
@@ -48,13 +46,6 @@ Write only the summary text.`;
 export function buildSummaryUserPrompt(facts: SummaryFacts): string {
   return `Database facts for the week:\n\n${JSON.stringify(facts, null, 2)}\n\nWrite the summary now. Use only these placeholders for counts: ${TOKEN_LIST}.`;
 }
-
-const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
-const DEFAULT_TIMEOUT_MS = 30_000;
-
-type ChatCompletionResponse = {
-  choices?: Array<{ message?: { content?: unknown } }>;
-};
 
 export type OpenRouterNarratorConfig = {
   apiKey: string;
@@ -67,62 +58,23 @@ export type OpenRouterNarratorConfig = {
 export function createOpenRouterNarrator(
   config: OpenRouterNarratorConfig,
 ): SummaryNarrator {
-  const baseUrl = (config.baseUrl?.trim() || DEFAULT_BASE_URL).replace(
-    /\/+$/,
-    '',
-  );
-  const fetchImpl = config.fetchImpl ?? fetch;
+  const client = createOpenRouterClient({
+    apiKey: config.apiKey,
+    model: config.model,
+    baseUrl: config.baseUrl,
+    fetchImpl: config.fetchImpl,
+    timeoutMs: config.timeoutMs ?? 30_000,
+  });
 
   return {
     async narrate(facts: SummaryFacts): Promise<string> {
-      let response: Response;
-
-      try {
-        response = await fetchImpl(`${baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${config.apiKey}`,
-            'Content-Type': 'application/json',
-            'X-Title': 'BIAI CRM',
-          },
-          body: JSON.stringify({
-            model: config.model,
-            temperature: 0,
-            max_tokens: 400,
-            messages: [
-              { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
-              { role: 'user', content: buildSummaryUserPrompt(facts) },
-            ],
-          }),
-          signal: AbortSignal.timeout(config.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-        });
-      } catch (error) {
-        throw new AiUnavailableError(
-          error instanceof Error
-            ? `AI summary request failed: ${error.message}`
-            : 'AI summary request failed.',
-        );
-      }
-
-      if (!response.ok) {
-        throw new AiResponseError(
-          `AI provider returned HTTP ${response.status}.`,
-        );
-      }
-
-      let payload: ChatCompletionResponse;
-      try {
-        payload = (await response.json()) as ChatCompletionResponse;
-      } catch {
-        throw new AiResponseError('AI provider returned a non-JSON response.');
-      }
-
-      const content = payload.choices?.[0]?.message?.content;
-      if (typeof content !== 'string' || content.trim() === '') {
-        throw new AiResponseError('AI provider returned no summary text.');
-      }
-
-      return content;
+      return client.complete({
+        messages: [
+          { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
+          { role: 'user', content: buildSummaryUserPrompt(facts) },
+        ],
+        maxTokens: 400,
+      });
     },
   };
 }

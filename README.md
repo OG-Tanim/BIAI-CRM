@@ -43,7 +43,7 @@ The whole application follows one setting, resolved in `lib/ai/availability.ts`:
 | Mode | How to select it | What happens |
 | --- | --- | --- |
 | **Live** | `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` set, `MOCK_AI=0` | Extraction and the weekly narration call OpenRouter. |
-| **Mock** | `MOCK_AI=1` | Canned fixtures keyed to the sample messages. No network call, no spend. This is the safe local default during development. |
+| **Mock** | `MOCK_AI=1` | Canned fixtures keyed to the sample messages. No network call, no spend. A banner says the AI is in mock mode, so canned text is never presented as a live answer. This is the safe local default during development. |
 | **Unavailable** | `MOCK_AI=0` and no key/model | The app loads normally. A banner says AI is unavailable, the **Read message** button is disabled, and **Fill in manually** still saves an enquiry. `/summary` shows its counts without prose. |
 
 Try the no-key path with the environment overriding `.env.local`:
@@ -57,10 +57,15 @@ that manual entry remains available rather than leaving a spinner running.
 
 ### Database branches
 
-`DATABASE_BRANCH` selects the connection string: `testing` (default) uses `TEST_DATABASE_URL`,
-`production` uses `DATABASE_URL`. The production branch holds the schema and no seed data. The seed
-script refuses to run unless the target is explicitly `test`, and refuses when the two URLs resolve
-to the same database. `pnpm db:verify` reports table presence and row counts for both branches.
+`DATABASE_BRANCH` selects the connection string: `testing` uses `TEST_DATABASE_URL`, `production`
+uses `DATABASE_URL`. With no branch configured, a process holding both variables uses production,
+and one holding only `DATABASE_URL` is production too. The label the app reports is derived from
+the URL it actually opened, so a process can never read production while claiming to be testing;
+an explicit label without its matching URL fails loudly. The production branch holds the schema and
+no seed data. The seed script refuses to run unless the target is explicitly `test`, and refuses
+when the two URLs resolve to the same database. `pnpm db:verify` reports table presence and row
+counts for both branches; only production must hold zero rows, because the testing branch is
+normally seeded.
 
 ### Other commands
 
@@ -81,6 +86,7 @@ the measurement.
 app/                     Next.js App Router pages and thin route bindings
   api/                   one file per endpoint, delegating to lib/api
   capture-form.tsx       the only interactive form (client component)
+  enquiries/             the list, plus one enquiry's detail view and reply panel
   pipeline/              board page plus its client board
 lib/
   domain/                pure, I/O-free decisions (no database, no network)
@@ -106,6 +112,12 @@ These are the decisions worth knowing before changing the system.
   bad record.
 - **Status is human-owned.** Extraction never returns a status, a save always writes `new`, and
   only `PATCH /api/enquiries/:id` moves a card. `paid` is a human assertion, not a payment event.
+- **Nothing important is only on the capture screen.** The list row is a summary, but
+  `/enquiries/:id` keeps the original message verbatim, the reply template beside its filled text,
+  and every note in order. The reply is editable there, because a template is often filled once the
+  price or start date is known, and the text actually sent should outlive the tab it was typed in.
+- **Notes are written where the move happens.** A note is appended from the board and read back on
+  the enquiry; it is attached to one enquiry and never edited.
 - **Leaving New is the contact moment.** `applyStatusChange` stamps `last_contacted_at` only when a
   card leaves `new`; later moves keep the first contact time. Stamping every move would let marking
   a card Lost reset the 48-hour clock it is meant to measure.
@@ -158,8 +170,8 @@ The following are out of scope for v1, not oversights:
 
 - **Free-model throttling is real.** OpenRouter's free models can queue, rate-limit or disappear.
   The mitigations present are a visible banner, mock mode and a clear failure response. There is
-  **one attempt per action, no retry/backoff loop**; a failed extraction is a visible 502 the
-  operator can retry, never a partial write.
+  **one retry with backoff on 429 and 5xx, then no further loop**; a repeated failure is a visible
+  502 the operator can retry, never a partial write.
 - **No real-model evaluation was possible in this environment.** `.env.local` has `MOCK_AI=1` and
   no key. `pnpm eval` reports 20/20 against fixtures; that is a harness check, not a claim about
   model quality. With a real key and model, the same command becomes the measurement. The frozen
@@ -191,8 +203,9 @@ Tests live at two seams only:
    insert per save, status forced to `new`, non-leads excluded from the board and queue, duplicate
    reporting, AI failure codes. Database tests run inside transactions that roll back.
 
-Nothing is tested through the UI, and the AI is always replaced by a fake or a fixture. If a
-refactor moves code without changing observable behaviour, no test should need to change.
+Nothing is tested through the UI, and the AI is always replaced by a fake or a fixture. The enquiry
+detail page and its reply panel add no third seam: the panel PATCHes the same endpoint the board
+uses. If a refactor moves code without changing observable behaviour, no test should need to change.
 
 ## Sample data
 

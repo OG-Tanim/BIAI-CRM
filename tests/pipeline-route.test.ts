@@ -465,6 +465,67 @@ describe('PATCH /api/enquiries/:id', () => {
       expect(await notes()).toHaveLength(0);
     });
   });
+
+  it('fills a saved reply without overwriting its template', async () => {
+    await scenario(async ({ update, seed, rows }) => {
+      const card = await seed({
+        suggestedReply: 'The fee is {{price}}.',
+        replyFilled: null,
+      });
+
+      const { response, body } = await update(card.id, {
+        reply_filled: 'The fee is 5,000 taka.',
+      });
+
+      expect(response.status).toBe(200);
+      expect(body.enquiry.suggested_reply).toBe('The fee is {{price}}.');
+      expect(body.enquiry.reply_filled).toBe('The fee is 5,000 taka.');
+
+      const [stored] = await rows();
+      expect(stored!.suggestedReply).toBe('The fee is {{price}}.');
+      expect(stored!.replyFilled).toBe('The fee is 5,000 taka.');
+    });
+  });
+
+  it('rejects an edited template with a token outside the allowlist', async () => {
+    await scenario(async ({ update, seed, rows }) => {
+      const card = await seed({
+        suggestedReply: 'Hello.',
+        replyFilled: 'Hello.',
+      });
+
+      const { response, body } = await update(card.id, {
+        suggested_reply: 'The fee is {{cohort_two}}.',
+      });
+
+      expect(response.status).toBe(422);
+      expect((body as unknown as { error: string }).error).toBe(
+        'invalid_status_change',
+      );
+
+      const [stored] = await rows();
+      expect(stored!.suggestedReply).toBe('Hello.');
+    });
+  });
+
+  it('moves updated_at only when the status moves', async () => {
+    await scenario(async ({ update, seed, rows }) => {
+      const card = await seed({ status: 'contacted', lastContactedAt: OLD });
+      const before = (await rows())[0]!;
+
+      await update(card.id, { note: 'Left a voicemail.' });
+      let [stored] = await rows();
+      expect(stored!.updatedAt).toEqual(before.updatedAt);
+
+      await update(card.id, { needs_attention: true });
+      [stored] = await rows();
+      expect(stored!.updatedAt).toEqual(before.updatedAt);
+
+      await update(card.id, { status: 'interested' });
+      [stored] = await rows();
+      expect(stored!.updatedAt).toEqual(NOW);
+    });
+  });
 });
 
 describe('GET /api/enquiries', () => {

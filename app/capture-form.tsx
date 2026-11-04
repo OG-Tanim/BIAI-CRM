@@ -15,6 +15,8 @@ import type {
   Kind,
   ReplyLanguage,
 } from '@/lib/domain/extraction';
+import { formatDateTime } from '@/lib/format';
+import { messageFrom } from '@/lib/api/error-message';
 
 const CHANNEL_OPTIONS: Array<{ value: Channel; label: string }> = [
   { value: 'whatsapp', label: 'WhatsApp' },
@@ -112,20 +114,6 @@ function draftFromExtraction(payload: ExtractionPayload): Draft {
   };
 }
 
-function errorMessage(payload: unknown, fallback: string): string {
-  if (
-    typeof payload === 'object' &&
-    payload !== null &&
-    typeof (payload as { message?: unknown }).message === 'string'
-  ) {
-    const issues = (payload as { issues?: unknown }).issues;
-    const detail =
-      Array.isArray(issues) && issues.length > 0 ? ` ${issues.join('; ')}` : '';
-    return `${(payload as { message: string }).message}${detail}`;
-  }
-  return fallback;
-}
-
 export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
   const [rawMessage, setRawMessage] = useState('');
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
@@ -159,7 +147,7 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
       const payload: unknown = await response.json();
 
       if (!response.ok) {
-        setExtractError(errorMessage(payload, 'Could not read that message.'));
+        setExtractError(messageFrom(payload, 'Could not read that message.'));
         return;
       }
 
@@ -207,7 +195,7 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
       const payload: unknown = await response.json();
 
       if (!response.ok) {
-        setSaveError(errorMessage(payload, 'Could not save the enquiry.'));
+        setSaveError(messageFrom(payload, 'Could not save the enquiry.'));
         return;
       }
 
@@ -736,12 +724,8 @@ function DuplicateWarning({ duplicate }: { duplicate: DuplicateSummary }) {
         The earlier enquiry belongs to{' '}
         <span className="font-medium">{duplicate.name}</span> (status{' '}
         {duplicate.status.replace('_', ' ')}, saved{' '}
-        {new Date(duplicate.created_at).toLocaleDateString('en-GB', {
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-        })}
-        ). This new enquiry was still saved.
+        {formatDateTime(duplicate.created_at)}). This new enquiry was still
+        saved.
       </p>
     </div>
   );

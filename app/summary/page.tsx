@@ -1,5 +1,7 @@
 import Link from 'next/link';
+import { PageLoadError } from '@/app/_components/page-load-error';
 import { getSummaryNarrator } from '@/lib/ai/summary';
+import { loadPageData } from '@/lib/api/page-load';
 import { loadSummaryFacts } from '@/lib/api/summary';
 import { getDb } from '@/lib/db/client';
 import { KINDS, STATUSES } from '@/lib/domain/enquiry';
@@ -16,16 +18,17 @@ import { logFailure } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
+const LOAD_FAILURE =
+  'Could not compute the weekly summary. Check the database connection and reload.';
+
 export default async function SummaryPage() {
-  let facts: SummaryFacts | null = null;
+  const { data: facts, error } = await loadPageData<SummaryFacts>(
+    { label: 'summary page', action: 'aggregate', failure: LOAD_FAILURE },
+    () => loadSummaryFacts(getDb()),
+  );
+
   let narrative: string | null = null;
   let narrationNotice: string | null = null;
-
-  try {
-    facts = await loadSummaryFacts(getDb());
-  } catch (error) {
-    logFailure('summary page', 'aggregate', error);
-  }
 
   const hasSummaryData =
     facts !== null &&
@@ -68,13 +71,7 @@ export default async function SummaryPage() {
       </header>
 
       {facts === null ? (
-        <p
-          role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-        >
-          Could not compute the weekly summary. Check the database connection
-          and reload.
-        </p>
+        <PageLoadError message={error ?? LOAD_FAILURE} />
       ) : !hasSummaryData ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
           <p className="text-sm font-semibold text-slate-800">

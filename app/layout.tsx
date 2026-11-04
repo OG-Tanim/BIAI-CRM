@@ -28,7 +28,20 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
+      {/*
+        Browser extensions mutate <body> before hydration (ColorZilla adds
+        cz-shortcut-listen, password managers and grammar checkers add their
+        own data-* attributes). React compares the server HTML with the client
+        props and reports every extra attribute as a hydration mismatch, which
+        is noise: the markup we shipped is correct and the attribute is not
+        ours. suppressHydrationWarning silences that comparison for this one
+        element's attributes only, so real mismatches in the tree below still
+        surface.
+      */}
+      <body
+        className="min-h-screen bg-slate-50 text-slate-900 antialiased"
+        suppressHydrationWarning
+      >
         <header className="border-b border-slate-200 bg-white">
           <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-3">
             <Link
@@ -50,6 +63,23 @@ export default function RootLayout({
             </nav>
           </div>
         </header>
+        {aiMode === 'mock' ? (
+          <div
+            role="status"
+            aria-label="AI status"
+            className="border-b border-sky-200 bg-sky-50"
+          >
+            <div className="mx-auto max-w-7xl px-6 py-3 text-sm leading-relaxed text-sky-950">
+              <p>
+                <span className="font-semibold">AI is in mock mode.</span>{' '}
+                MOCK_AI=1, so extraction and the written summary are canned
+                sample responses keyed to the demo messages. No request reaches
+                OpenRouter, and none of the AI text here was written for this
+                message.
+              </p>
+            </div>
+          </div>
+        ) : null}
         {aiMode === 'unavailable' ? (
           <div
             role="status"

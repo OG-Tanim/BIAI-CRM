@@ -185,7 +185,7 @@ notes
 
 - `POST /api/extract` — body `{ message: string }`. Returns a validated `ExtractionResult`. Does not write to the database.
 - `POST /api/enquiries` — body is the reviewed form fields. Always inserts with `status: 'new'`. Returns the created enquiry plus `duplicateOf` when another enquiry shares the phone number.
-- `PATCH /api/enquiries/:id` — body `{ status?, note?, needs_attention?, suggested_reply? }`. Applies a human status change and optionally appends a note.
+- `PATCH /api/enquiries/:id` — body `{ status?, note?, needs_attention?, suggested_reply?, reply_filled? }`. Applies a human status change, optionally appends a note, and edits the reply template or its filled text. There is no separate reply endpoint: the reply belongs to the enquiry.
 - `GET /api/pipeline` — returns five columns of `sales_lead` enquiries with per-column counts.
 - `GET /api/reminders` — returns overdue enquiries per the 48-hour rule.
 - `POST /api/summary` — aggregates the last seven days and asks the AI to narrate the numbers.
@@ -214,7 +214,7 @@ type ExtractionResult = {
 
 Prompt rules, in priority order:
 
-1. Never invent a phone number. If no number appears in the message, return `null`. Five of the twenty samples have none.
+1. Never invent a phone number. If no number appears in the message, return `null`. Six of the twenty samples have none.
 2. Never return a status. Status is set by the operator.
 3. Never infer identity from a name. A first name alone does not establish who someone is.
 4. Split the sender's role and organisation out of their name instead of dropping either. `"Mahmud Hasan (Managing Director, Gazipur textile company)"` yields `name: "Mahmud Hasan"`, `job_title: "Managing Director"`, `company: "Gazipur textile company"`. Leave `job_title` and `company` null when the message does not state them — most individual students state neither.
@@ -242,8 +242,9 @@ Nine allowlisted tokens:
 
 Rules:
 
-- Any `{{...}}` token outside this list fails validation and the whole reply is nulled. A model that invents `{{cohort_two}}` is a model that has started making things up.
+- Any `{{...}}` token outside this list fails validation and the whole reply is nulled. A model that invents `{{cohort_two}}` is a model that has started making things up. Matching is literal: `{{ price }}` is not `{{price}}`.
 - `suggested_reply` stores the template, placeholders and all. Filling them writes `reply_filled`, and that is what the operator copies.
+- Both columns stay editable after save from the enquiry's detail view; the template is never turned into the filled text. Editing the template alone drops a stale filled version rather than copying text written for the old wording.
 - `hasUnfilledPlaceholder` guards the copy action: while `{{` remains, copying warns instead of silently sending `{{price}}` to a customer. Saving is still allowed — the reply is a draft until someone sends it.
 - Placeholders appear only where the message actually asks for that fact. A reply to "how do I join?" carries no `{{price}}` unless money was raised.
 
@@ -265,13 +266,14 @@ The brief specifies "English or Banglish", but four of the twenty samples (#2, #
 - Any transition out of `new` stamps `last_contacted_at = now()`. A later move leaves that time alone: it records where the deal got to, not that the person was reached again.
 - `needs_attention` is the operator's own mark and moves independently of status; setting or clearing it is not a status change and stamps nothing.
 - Appending a note without a status change does not move a deal or restamp contact time.
+- `updated_at` records the last status move. A note-only, flag-only or reply-only update leaves it alone, so the weekly `moved` count means deals that changed stage rather than rows that were touched.
 - `paid` and `lost` are reachable from any status; there is no enforced state machine beyond that, because real sales do not follow one and a first version cannot afford to argue with the operator.
 
 ### The 48-hour rule
 
 An enquiry is overdue when:
 
-`COALESCE(last_contacted_at, created_at) < now() - interval '48 hours'` and `status in ('new','contacted')` and `kind = 'sales_lead'`.
+`COALESCE(last_contacted_at, created_at) <= now() - interval '48 hours'` and `status in ('new','contacted')` and `kind = 'sales_lead'`.
 
 Non-sales enquiries are excluded before the time comparison, not after.
 
@@ -297,7 +299,8 @@ A single I/O-free module holding the decisions that are easy to get subtly wrong
 - `hasBengaliScript` — true for #2, #7, #13, #18; false for the Banglish rows (#1, #4, #6, #9, #12, #15, #17) and the English rows, which is the whole point of the guard being cheap.
 - `isDueForFollowUp` — false at 47h59m, true at exactly 48h, true beyond; false for `paid`, `lost`, `spam`, `job_seeker`; true when `last_contacted_at` is stale even if `created_at` is recent.
 - `applyStatusChange` — `new → contacted` stamps `last_contacted_at`; a note-only update does not; a later move keeps the first contact time; the attention flag flips independently of status; `paid` is reachable only via this function, never from extraction.
-- `assertPlaceholdersAllowed` — rejects `{{cohort_two}}` because it is not on the allowlist; accepts all nine allowlisted tokens, including repeated use of one token.
+- `applyReplyEdit` — edits the template and the filled text independently; rejects a template token outside the allowlist; accepts an empty filled version; drops a stale filled version when the template changes without one supplied.
+- `assertPlaceholdersAllowed` — rejects `{{cohort_two}}` because it is not on the allowlist, and `{{ price }}` because matching is literal; accepts all nine allowlisted tokens, including repeated use of one token.
 - `hasUnfilledPlaceholder` — true for `"the fee is {{price}}"`, false once every token has been replaced.
 
 Language choice itself is not unit-tested, because it is the model's judgement and a test would only assert that a fixture was returned intact. The guard is the testable part, and the guard is what protects a customer.
@@ -308,7 +311,7 @@ Route handlers tested against a throwaway Postgres database, with the `AiExtract
 
 - `POST /api/extract` returns a complete prefilled payload and writes nothing.
 - `POST /api/enquiries` creates exactly one row with `status: 'new'` and returns `duplicateOf` on a repeat phone.
-- `PATCH /api/enquiries/:id` moves a card and appends the note.
+- `PATCH /api/enquiries/:id` moves a card, appends the note, and saves an edited reply template or filled text.
 - `GET /api/pipeline` returns five columns containing only `sales_lead` rows.
 - `GET /api/reminders` excludes non-sales and resolved enquiries.
 
@@ -352,7 +355,7 @@ Other rows that will break a naive extractor:
 - #18 names a company and a role in a different shape — *"Rezaul Karim (owner, small garment factory)"* — and should yield `job_title: "owner"`, `company: "small garment factory"`.
 - #5 is a staff-written phone note, not a customer message.
 - #1 and #12 are the same person, two days apart.
-- #2, #6, #11, #13, #17 have no phone number at all.
+- #2, #6, #9, #11, #13, #17 have no phone number at all.
 - #6 and #11 arrive as Facebook comments, where a private reply is not possible.
 
 ### Demo script
@@ -364,7 +367,7 @@ Six beats, roughly three minutes, run against the testing branch:
 3. Paste #11 — classified spam, and it does not appear on the board.
 4. Paste #16 — classified support with the attention flag, top of the queue.
 5. Paste #2 — Bangla in, Bangla reply out.
-6. Open Rafi's reply, fill `{{price}}` and `{{payment_method}}`, then copy it — the copy button warns while any placeholder is still unfilled.
+6. Open Rafi's enquiry from the list, fill `{{price}}` and `{{payment_method}}` in the filled reply, save it, then copy — the copy button warns while any placeholder is still unfilled.
 7. Move Rafi from New to Contacted and add a note, then show the follow-up queue and the weekly summary.
 
 ### Build order

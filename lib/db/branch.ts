@@ -3,59 +3,15 @@ export type DatabaseBranch = 'production' | 'testing';
 type Env = Record<string, string | undefined>;
 
 /**
- * Decide which Neon branch this process is allowed to talk to.
- *
- * Explicit configuration wins. Otherwise Vercel's environment tells us:
- * production deployments are production, previews are testing. Finally, when
- * both URLs are present and differ, an active DATABASE_URL is production.
- *
- * The fallback is `testing` on purpose: an unconfigured local process must
- * never fall through to live customer data.
- */
-export function inferDatabaseBranch(env: Env = process.env): DatabaseBranch {
-  const configured = env.DATABASE_BRANCH?.trim().toLowerCase();
-  if (configured === 'production' || configured === 'testing') {
-    return configured;
-  }
-
-  const vercelEnv = env.VERCEL_ENV?.trim().toLowerCase();
-  if (vercelEnv === 'production') return 'production';
-  if (vercelEnv === 'preview' || vercelEnv === 'development') return 'testing';
-
-  if (
-    env.DATABASE_URL &&
-    env.TEST_DATABASE_URL &&
-    env.DATABASE_URL !== env.TEST_DATABASE_URL
-  ) {
-    return 'production';
-  }
-
-  return 'testing';
-}
-
-/**
- * Resolve the connection string for the selected branch.
- *
- * The testing branch prefers TEST_DATABASE_URL but falls back to DATABASE_URL
- * because Vercel previews conventionally point DATABASE_URL at the testing
- * branch and never set a second variable.
- */
-export function resolveDatabaseUrl(env: Env = process.env): string | null {
-  if (inferDatabaseBranch(env) === 'testing') {
-    return env.TEST_DATABASE_URL || env.DATABASE_URL || null;
-  }
-
-  return env.DATABASE_URL || env.TEST_DATABASE_URL || null;
-}
-
-/**
  * A connection string reduced to the database it actually points at.
  *
  * Credentials, query parameters and a trailing slash may differ between two
  * variables that still name the same database, so none of them count. The
  * protocol is normalised because `postgres:` and `postgresql:` are aliases.
  */
-function normalizeConnection(value: string): string | null {
+export function databaseIdentity(value: string | null | undefined): string | null {
+  if (!value) return null;
+
   let parsed: URL;
 
   try {
@@ -75,6 +31,143 @@ function normalizeConnection(value: string): string | null {
   const database = parsed.pathname.replace(/\/+$/, '') || '/';
 
   return `${protocol}://${parsed.hostname.toLowerCase()}:${port}${database}`;
+}
+
+/** True when two connection strings name the same database, however written. */
+export function sameDatabase(a: string, b: string): boolean {
+  const left = databaseIdentity(a);
+  const right = databaseIdentity(b);
+  return left !== null && left === right;
+}
+
+export type ConnectionDescription = {
+  host: string;
+  port: string;
+  database: string;
+};
+
+/** What a connection string points at, for the line a script prints first. */
+export function describeConnection(value: string): ConnectionDescription | null {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+
+  return {
+    host: parsed.hostname,
+    port: parsed.port || 'default',
+    database: parsed.pathname.replace(/^\//, '') || '(default)',
+  };
+}
+
+export type TargetConnection = {
+  variable: 'TEST_DATABASE_URL' | 'DATABASE_URL';
+  url: string;
+};
+
+/**
+ * The connection a schema command may use, chosen by an explicit target.
+ *
+ * There is no fallback between branches: asking for production while only the
+ * testing variable exists is a failure, not a guess.
+ */
+export function connectionForTarget(
+  target: 'testing' | 'production',
+  env: Env = process.env,
+): TargetConnection | null {
+  const variable = target === 'testing' ? 'TEST_DATABASE_URL' : 'DATABASE_URL';
+  const url = env[variable]?.trim();
+
+  return url ? { variable, url } : null;
+}
+
+export type DatabaseConnection = {
+  branch: DatabaseBranch;
+  url: string;
+};
+
+function branchForUrl(
+  url: string,
+  env: Env,
+  fallback: DatabaseBranch,
+): DatabaseBranch {
+  const identity = databaseIdentity(url);
+  const testingIdentity = databaseIdentity(env.TEST_DATABASE_URL?.trim());
+  const productionIdentity = databaseIdentity(env.DATABASE_URL?.trim());
+
+  if (identity && testingIdentity && identity === testingIdentity) {
+    return 'testing';
+  }
+  if (identity && productionIdentity && identity === productionIdentity) {
+    return 'production';
+  }
+
+  return fallback;
+}
+
+/**
+ * Decide which branch this process talks to, and with which URL.
+ *
+ * The label is derived from the URL that will actually be opened, never from a
+ * separate rule that can disagree with it: a process holding only
+ * `DATABASE_URL` is a production process, because that variable is the
+ * production one. `DATABASE_BRANCH` may name a branch explicitly, but it must
+ * have the matching URL to back it up — an explicit `testing` with no
+ * `TEST_DATABASE_URL` fails loudly instead of reading production under a
+ * testing label.
+ *
+ * Explicit configuration wins. Otherwise Vercel's environment tells us:
+ * production deployments are production, previews are testing.
+ */
+export function resolveDatabaseConnection(
+  env: Env = process.env,
+): DatabaseConnection | null {
+  const configured = env.DATABASE_BRANCH?.trim().toLowerCase();
+  const testingUrl = env.TEST_DATABASE_URL?.trim() || null;
+  const productionUrl = env.DATABASE_URL?.trim() || null;
+  const vercelEnv = env.VERCEL_ENV?.trim().toLowerCase();
+
+  if (configured === 'production') {
+    return productionUrl ? { branch: 'production', url: productionUrl } : null;
+  }
+
+  if (configured === 'testing') {
+    return testingUrl ? { branch: 'testing', url: testingUrl } : null;
+  }
+
+  if (vercelEnv === 'production') {
+    return productionUrl ? { branch: 'production', url: productionUrl } : null;
+  }
+
+  if (vercelEnv === 'preview' || vercelEnv === 'development') {
+    const url = testingUrl ?? productionUrl;
+    return url ? { branch: branchForUrl(url, env, 'testing'), url } : null;
+  }
+
+  if (testingUrl && productionUrl && testingUrl !== productionUrl) {
+    return { branch: 'production', url: productionUrl };
+  }
+
+  if (testingUrl) return { branch: 'testing', url: testingUrl };
+
+  // Only DATABASE_URL is set: that is the production variable. Reporting
+  // `testing` here was the old lie — the app read production and said testing.
+  if (productionUrl) return { branch: 'production', url: productionUrl };
+
+  return null;
+}
+
+/** The branch this process talks to; `testing` is the reply when unconfigured. */
+export function inferDatabaseBranch(env: Env = process.env): DatabaseBranch {
+  return resolveDatabaseConnection(env)?.branch ?? 'testing';
+}
+
+/** The connection string for the resolved branch, or null when unconfigured. */
+export function resolveDatabaseUrl(env: Env = process.env): string | null {
+  return resolveDatabaseConnection(env)?.url ?? null;
 }
 
 export type SeedTarget =
@@ -143,13 +236,11 @@ export function resolveSeedTarget(
     };
   }
 
-  const testingConnection = normalizeConnection(testingUrl);
-  if (!testingConnection) {
+  if (!databaseIdentity(testingUrl)) {
     return { ok: false, reason: 'refused: TEST_DATABASE_URL is not a valid URL.' };
   }
 
-  const productionConnection = normalizeConnection(productionUrl);
-  if (!productionConnection) {
+  if (!databaseIdentity(productionUrl)) {
     return {
       ok: false,
       reason:
@@ -157,7 +248,7 @@ export function resolveSeedTarget(
     };
   }
 
-  if (testingConnection === productionConnection) {
+  if (sameDatabase(testingUrl, productionUrl)) {
     return {
       ok: false,
       reason:
@@ -165,12 +256,15 @@ export function resolveSeedTarget(
     };
   }
 
-  const parsed = new URL(testingUrl);
+  const described = describeConnection(testingUrl);
+  if (!described) {
+    return { ok: false, reason: 'refused: TEST_DATABASE_URL is not a valid URL.' };
+  }
 
   return {
     ok: true,
     url: testingUrl,
-    host: parsed.hostname,
-    database: parsed.pathname.replace(/^\//, '') || '(default)',
+    host: described.host,
+    database: described.database,
   };
 }

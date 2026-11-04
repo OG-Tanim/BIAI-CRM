@@ -10,9 +10,9 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:push:test": "node scripts/db-push.mjs --target test",
-    "db:push:prod": "node scripts/db-push.mjs --target production",
-    "db:verify": "node scripts/db-verify.mjs",
+    "db:push:test": "tsx scripts/db-push.ts --target test",
+    "db:push:prod": "tsx scripts/db-push.ts --target production",
+    "db:verify": "tsx scripts/db-verify.ts",
     "db:seed": "tsx scripts/seed.ts",
     "eval": "tsx scripts/eval.ts"
   },

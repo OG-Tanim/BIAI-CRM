@@ -6,6 +6,7 @@ import { enquiries, type Enquiry } from '@/lib/db/schema';
 import type * as schema from '@/lib/db/schema';
 import { toEnquiryDto, type EnquiryDto } from '@/lib/api/enquiry-dto';
 import { STATUSES, type Status } from '@/lib/domain/enquiry';
+import { followUpAgeSeconds } from '@/lib/domain/follow-up';
 import { STATUS_LABELS } from '@/lib/format';
 import { logFailure } from '@/lib/log';
 
@@ -60,10 +61,9 @@ function toCard(row: Enquiry, now: Date): PipelineCard {
   // The same clock the 48-hour rule uses: the last time the person was reached,
   // or creation when nobody has reached them yet. This is not time-in-status;
   // the schema has no column for that and the spec does not ask for one.
-  const lastActivity = row.lastContactedAt ?? row.createdAt;
-  const ageSeconds = Math.max(
-    0,
-    Math.floor((now.getTime() - lastActivity.getTime()) / 1000),
+  const ageSeconds = followUpAgeSeconds(
+    { createdAt: row.createdAt, lastContactedAt: row.lastContactedAt },
+    now,
   );
 
   return {

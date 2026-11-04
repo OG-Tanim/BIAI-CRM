@@ -4,6 +4,8 @@ import {
 } from '@/lib/ai/prompt';
 import { mockExtractionFor } from '@/lib/ai/mock-fixtures';
 import { resolveAiMode } from '@/lib/ai/availability';
+import { AiResponseError, AiUnavailableError } from '@/lib/ai/errors';
+import { createOpenRouterClient } from '@/lib/ai/openrouter';
 
 /**
  * The single AI port. Everything above this line sees a plain function that
@@ -14,19 +16,9 @@ export type AiExtractor = {
   extract(message: string): Promise<unknown>;
 };
 
-export class AiUnavailableError extends Error {
-  constructor(message = 'AI extraction is not configured.') {
-    super(message);
-    this.name = 'AiUnavailableError';
-  }
-}
-
-export class AiResponseError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AiResponseError';
-  }
-}
+// The failure types predate this module. Re-exporting them keeps every caller
+// and route import working while the definitions live in one place.
+export { AiResponseError, AiUnavailableError };
 
 type Env = Record<string, string | undefined>;
 
@@ -36,13 +28,6 @@ export type OpenRouterConfig = {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
-};
-
-const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
-const DEFAULT_TIMEOUT_MS = 45_000;
-
-type ChatCompletionResponse = {
-  choices?: Array<{ message?: { content?: unknown } }>;
 };
 
 /**
@@ -66,56 +51,24 @@ function parseModelJson(content: string): unknown {
 }
 
 export function createOpenRouterExtractor(config: OpenRouterConfig): AiExtractor {
-  const baseUrl = (config.baseUrl?.trim() || DEFAULT_BASE_URL).replace(/\/+$/, '');
-  const fetchImpl = config.fetchImpl ?? fetch;
+  const client = createOpenRouterClient({
+    apiKey: config.apiKey,
+    model: config.model,
+    baseUrl: config.baseUrl,
+    fetchImpl: config.fetchImpl,
+    timeoutMs: config.timeoutMs,
+  });
 
   return {
     async extract(message: string): Promise<unknown> {
-      let response: Response;
-
-      try {
-        response = await fetchImpl(`${baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${config.apiKey}`,
-            'Content-Type': 'application/json',
-            'X-Title': 'BIAI CRM',
-          },
-          body: JSON.stringify({
-            model: config.model,
-            temperature: 0,
-            max_tokens: 1200,
-            response_format: { type: 'json_object' },
-            messages: [
-              { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
-              { role: 'user', content: buildExtractionUserPrompt(message) },
-            ],
-          }),
-          signal: AbortSignal.timeout(config.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-        });
-      } catch (error) {
-        throw new AiUnavailableError(
-          error instanceof Error
-            ? `AI request failed: ${error.message}`
-            : 'AI request failed.',
-        );
-      }
-
-      if (!response.ok) {
-        throw new AiResponseError(`AI provider returned HTTP ${response.status}.`);
-      }
-
-      let payload: ChatCompletionResponse;
-      try {
-        payload = (await response.json()) as ChatCompletionResponse;
-      } catch {
-        throw new AiResponseError('AI provider returned a non-JSON response.');
-      }
-
-      const content = payload.choices?.[0]?.message?.content;
-      if (typeof content !== 'string' || content.trim() === '') {
-        throw new AiResponseError('AI provider returned no message content.');
-      }
+      const content = await client.complete({
+        messages: [
+          { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
+          { role: 'user', content: buildExtractionUserPrompt(message) },
+        ],
+        maxTokens: 1200,
+        jsonMode: true,
+      });
 
       return parseModelJson(content);
     },

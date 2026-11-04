@@ -5,6 +5,7 @@ import { getDb } from '@/lib/db/client';
 import { enquiries, type Enquiry } from '@/lib/db/schema';
 import type * as schema from '@/lib/db/schema';
 import { toEnquiryDto, type EnquiryDto } from '@/lib/api/enquiry-dto';
+import { readJsonObject } from '@/lib/api/request-body';
 import {
   EnquiryValidationError,
   prepareEnquiry,
@@ -75,25 +76,12 @@ async function findEarlierEnquiry(
  */
 export function createEnquiriesHandler(options: { db?: EnquiryStore } = {}) {
   return async function POST(request: Request): Promise<NextResponse> {
-    let body: unknown;
+    const parsed = await readJsonObject(request);
 
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { error: 'invalid_json', message: 'Request body must be JSON.' },
-        { status: 400 },
-      );
-    }
+    if (!parsed.ok) return parsed.response;
 
-    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-      return NextResponse.json(
-        { error: 'invalid_body', message: 'Request body must be a JSON object.' },
-        { status: 400 },
-      );
-    }
-
-    const rawMessage = (body as { raw_message?: unknown }).raw_message;
+    const body = parsed.body;
+    const rawMessage = body.raw_message;
 
     if (typeof rawMessage !== 'string' || rawMessage.trim() === '') {
       return NextResponse.json(

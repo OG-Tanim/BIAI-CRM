@@ -3,6 +3,7 @@ import {
   EnquiryValidationError,
   StatusChangeValidationError,
   UnfilledPlaceholderError,
+  applyReplyEdit,
   applyStatusChange,
   pendingPlaceholders,
   prepareEnquiry,
@@ -402,5 +403,102 @@ describe('applyStatusChange', () => {
         now,
       ),
     ).toThrow(StatusChangeValidationError);
+  });
+});
+
+describe('applyReplyEdit', () => {
+  const current = {
+    suggestedReply: 'The fee is {{price}}.',
+    replyFilled: null,
+  };
+
+  it('fills the reply without touching the template', () => {
+    const decision = applyReplyEdit(current, {
+      reply_filled: 'The fee is 5,000 taka.',
+    });
+
+    expect(decision.suggestedReply).toBe(current.suggestedReply);
+    expect(decision.replyFilled).toBe('The fee is 5,000 taka.');
+    expect(decision.changed).toBe(true);
+  });
+
+  it('keeps the template on the nine-token allowlist', () => {
+    expect(() =>
+      applyReplyEdit(current, { suggested_reply: 'The fee is {{cohort_two}}.' }),
+    ).toThrow(StatusChangeValidationError);
+
+    expect(() =>
+      applyReplyEdit(current, { suggested_reply: 'The fee is {{ price }}.' }),
+    ).toThrow(StatusChangeValidationError);
+  });
+
+  it('accepts an edited template that uses an allowlisted token', () => {
+    const decision = applyReplyEdit(current, {
+      suggested_reply: 'The fee is {{price}} and classes start {{start_date}}.',
+    });
+
+    expect(decision.suggestedReply).toBe(
+      'The fee is {{price}} and classes start {{start_date}}.',
+    );
+    // A template with tokens has no completed text until someone fills it.
+    expect(decision.replyFilled).toBeNull();
+  });
+
+  it('treats a placeholder-free template as its own filled version', () => {
+    const decision = applyReplyEdit(current, {
+      suggested_reply: 'Thanks for reaching out.',
+    });
+
+    expect(decision.replyFilled).toBe('Thanks for reaching out.');
+  });
+
+  it('drops a stale filled version when the template changes without one supplied', () => {
+    const decision = applyReplyEdit(
+      { suggestedReply: 'The fee is {{price}}.', replyFilled: 'It is 5,000.' },
+      { suggested_reply: 'The fee is {{price}}, payable by {{payment_method}}.' },
+    );
+
+    // The old finished text answered the old template; copying it under the
+    // new one would send a reply nobody wrote.
+    expect(decision.replyFilled).toBeNull();
+  });
+
+  it('keeps a filled version supplied alongside a template edit', () => {
+    const decision = applyReplyEdit(current, {
+      suggested_reply: 'The fee is {{price}}, payable by {{payment_method}}.',
+      reply_filled: 'The fee is 5,000 taka, payable by bKash.',
+    });
+
+    expect(decision.replyFilled).toBe(
+      'The fee is 5,000 taka, payable by bKash.',
+    );
+  });
+
+  it('clears the filled version with an empty string or null', () => {
+    const filledCurrent = {
+      suggestedReply: 'The fee is {{price}}.',
+      replyFilled: 'It is 5,000.',
+    };
+
+    expect(applyReplyEdit(filledCurrent, { reply_filled: '' }).replyFilled).toBeNull();
+    expect(applyReplyEdit(filledCurrent, { reply_filled: null }).replyFilled).toBeNull();
+  });
+
+  it('reports no change for an identical reply', () => {
+    const decision = applyReplyEdit(current, {
+      suggested_reply: current.suggestedReply,
+      reply_filled: null,
+    });
+
+    expect(decision.changed).toBe(false);
+  });
+
+  it('rejects a reply edit that is not text or null', () => {
+    expect(() => applyReplyEdit(current, { suggested_reply: 42 })).toThrow(
+      StatusChangeValidationError,
+    );
+    expect(() => applyReplyEdit(current, { reply_filled: 42 })).toThrow(
+      StatusChangeValidationError,
+    );
   });
 });

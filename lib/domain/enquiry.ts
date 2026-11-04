@@ -4,13 +4,18 @@ import {
   INTERESTS,
   KINDS,
   REPLY_LANGUAGES,
-  hasUnfilledPlaceholder,
+  PlaceholderNotAllowedError,
+  assertPlaceholdersAllowed,
   normalizePhone,
   type Channel,
   type Interest,
   type Kind,
   type ReplyLanguage,
 } from '@/lib/domain/extraction';
+import {
+  hasUnfilledPlaceholder,
+  placeholderTokens,
+} from '@/lib/domain/placeholders';
 
 /**
  * The capture and pipeline modules share one vocabulary. Re-exporting it here
@@ -152,20 +157,12 @@ const reviewedEnquirySchema = z.object({
 
 export type ReviewedEnquiry = z.infer<typeof reviewedEnquirySchema>;
 
-const PLACEHOLDER_TOKEN = /\{\{([^{}]*)\}\}/g;
-
 /**
  * The tokens still present in a reply, deduplicated. Used to tell the operator
  * what to fill; `hasUnfilledPlaceholder` remains the yes/no decision.
  */
 export function pendingPlaceholders(reply: string | null | undefined): string[] {
-  if (typeof reply !== 'string') return [];
-
-  const tokens = new Set<string>();
-  for (const match of reply.matchAll(PLACEHOLDER_TOKEN)) {
-    tokens.add(match[1] ?? '');
-  }
-  return [...tokens];
+  return placeholderTokens(reply);
 }
 
 /**
@@ -354,5 +351,92 @@ export function applyStatusChange(
     moved,
     attentionChanged,
     changed: moved || attentionChanged || note !== null,
+  };
+}
+
+export type ReplyEditDecision = {
+  suggestedReply: string;
+  replyFilled: string | null;
+  changed: boolean;
+};
+
+/**
+ * Decide what a reply edit writes.
+ *
+ * The template keeps its placeholders and must stay inside the nine-token
+ * allowlist — an edited template is still a proposal, not free text. The filled
+ * version is the text actually sent, so it may be empty and may still carry a
+ * token: copy refuses it until someone fills it.
+ *
+ * When the template changes and no filled version is supplied, the derived
+ * filled value follows the same rule as a save: a placeholder-free template is
+ * complete by itself, and a template with tokens has no filled text yet. That
+ * prevents the copy action from sending the previous template's finished text
+ * under a new template.
+ */
+export function applyReplyEdit(
+  current: { suggestedReply: string; replyFilled: string | null },
+  request: { suggested_reply?: unknown; reply_filled?: unknown },
+): ReplyEditDecision {
+  const issues: string[] = [];
+  let suggestedReply = current.suggestedReply;
+  let replyFilled = current.replyFilled;
+  let templateChanged = false;
+  let filledChanged = false;
+
+  if (request.suggested_reply !== undefined) {
+    if (typeof request.suggested_reply !== 'string') {
+      issues.push('suggested_reply: must be text.');
+    } else {
+      const next = request.suggested_reply.trim();
+
+      if (next !== '') {
+        try {
+          assertPlaceholdersAllowed(next);
+        } catch (error) {
+          if (error instanceof PlaceholderNotAllowedError) {
+            issues.push(
+              `suggested_reply: {{${error.token}}} is not an allowlisted placeholder.`,
+            );
+          } else {
+            throw error;
+          }
+        }
+      }
+
+      if (next !== suggestedReply) {
+        suggestedReply = next;
+        templateChanged = true;
+      }
+    }
+  }
+
+  if (request.reply_filled !== undefined) {
+    if (request.reply_filled !== null && typeof request.reply_filled !== 'string') {
+      issues.push('reply_filled: must be text or null.');
+    } else {
+      const trimmed =
+        request.reply_filled === null ? '' : request.reply_filled.trim();
+      const next = trimmed === '' ? null : trimmed;
+
+      if (next !== replyFilled) {
+        replyFilled = next;
+        filledChanged = true;
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    throw new StatusChangeValidationError(issues);
+  }
+
+  if (templateChanged && !filledChanged) {
+    replyFilled = resolveFilledReply(suggestedReply, null);
+  }
+
+  return {
+    suggestedReply,
+    replyFilled,
+    changed: templateChanged || filledChanged,
   };
 }

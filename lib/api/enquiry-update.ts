@@ -2,11 +2,15 @@ import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { getDb } from '@/lib/db/client';
-import { enquiries, notes, type Note } from '@/lib/db/schema';
+import { enquiries, notes } from '@/lib/db/schema';
 import type * as schema from '@/lib/db/schema';
 import { toEnquiryDto, type EnquiryDto } from '@/lib/api/enquiry-dto';
+import { toNoteDto, type NoteDto } from '@/lib/api/note-dto';
+import { isEnquiryId } from '@/lib/api/id';
+import { readJsonObject } from '@/lib/api/request-body';
 import {
   StatusChangeValidationError,
+  applyReplyEdit,
   applyStatusChange,
   type Status,
 } from '@/lib/domain/enquiry';
@@ -24,45 +28,25 @@ type EnquiryUpdateStore = Pick<
   'select' | 'update' | 'insert' | 'transaction'
 >;
 
-export type NoteDto = {
-  id: string;
-  enquiry_id: string;
-  body: string;
-  created_at: string;
-};
-
 export type UpdateEnquiryResponse = {
   enquiry: EnquiryDto;
   note: NoteDto | null;
 };
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function toNoteDto(row: Note): NoteDto {
-  return {
-    id: row.id,
-    enquiry_id: row.enquiryId,
-    body: row.body,
-    created_at: row.createdAt.toISOString(),
-  };
-}
-
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /**
- * `PATCH /api/enquiries/:id` — move a card, append a note, flag attention.
+ * `PATCH /api/enquiries/:id` — move a card, append a note, flag attention or
+ * edit the reply.
  *
- * The decision is made by `applyStatusChange`, not here: leaving `new` records
- * the contact time, a later move does not, a note alone changes neither, and
- * the attention flag moves independently of the status. The row update and the
- * note insert share one transaction, so they land together or not at all.
+ * The status decision is made by `applyStatusChange`, not here: leaving `new`
+ * records the contact time, a later move does not, a note alone changes
+ * neither, and the attention flag moves independently of the status. The reply
+ * decision is made by `applyReplyEdit`, which keeps the template inside the
+ * nine-token allowlist and keeps the filled text separate from it.
  *
- * `suggested_reply` is deliberately not accepted: the template written at
- * capture is never overwritten, because the reply actually sent lives in its
- * own `reply_filled` column. No ticket asks to edit a template after save.
+ * The row update and the note insert share one transaction, so they land
+ * together or not at all. `updated_at` moves only when the status does: the
+ * weekly "moved" count means deals that changed stage, not rows that were
+ * touched.
  */
 export function createEnquiryUpdateHandler(
   options: { db?: EnquiryUpdateStore; now?: () => Date } = {},
@@ -73,30 +57,18 @@ export function createEnquiryUpdateHandler(
   ): Promise<NextResponse> {
     const { id } = await context.params;
 
-    if (!UUID_PATTERN.test(id)) {
+    if (!isEnquiryId(id)) {
       return NextResponse.json(
         { error: 'not_found', message: 'No enquiry has that id.' },
         { status: 404 },
       );
     }
 
-    let body: unknown;
+    const parsed = await readJsonObject(request);
 
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { error: 'invalid_json', message: 'Request body must be JSON.' },
-        { status: 400 },
-      );
-    }
+    if (!parsed.ok) return parsed.response;
 
-    if (!isJsonObject(body)) {
-      return NextResponse.json(
-        { error: 'invalid_body', message: 'Request body must be a JSON object.' },
-        { status: 400 },
-      );
-    }
+    const body = parsed.body;
 
     const db = options.db ?? getDb();
     const now = options.now?.() ?? new Date();
@@ -112,7 +84,7 @@ export function createEnquiryUpdateHandler(
 
           if (!current) return 'not_found';
 
-          const decision = applyStatusChange(
+          const statusDecision = applyStatusChange(
             {
               status: current.status as Status,
               lastContactedAt: current.lastContactedAt,
@@ -126,28 +98,43 @@ export function createEnquiryUpdateHandler(
             now,
           );
 
-          if (!decision.changed) return 'unchanged';
+          const replyDecision = applyReplyEdit(
+            {
+              suggestedReply: current.suggestedReply,
+              replyFilled: current.replyFilled,
+            },
+            {
+              suggested_reply: body.suggested_reply,
+              reply_filled: body.reply_filled,
+            },
+          );
+
+          if (!statusDecision.changed && !replyDecision.changed) {
+            return 'unchanged';
+          }
 
           const [updated] = await tx
             .update(enquiries)
             .set({
-              status: decision.status,
-              lastContactedAt: decision.lastContactedAt,
-              needsAttention: decision.needsAttention,
-              updatedAt: now,
+              status: statusDecision.status,
+              lastContactedAt: statusDecision.lastContactedAt,
+              needsAttention: statusDecision.needsAttention,
+              suggestedReply: replyDecision.suggestedReply,
+              replyFilled: replyDecision.replyFilled,
+              ...(statusDecision.moved ? { updatedAt: now } : {}),
             })
             .where(eq(enquiries.id, id))
             .returning();
 
           if (!updated) return 'not_found';
 
-          if (decision.note === null) {
+          if (statusDecision.note === null) {
             return { enquiry: toEnquiryDto(updated), note: null };
           }
 
           const [created] = await tx
             .insert(notes)
-            .values({ enquiryId: id, body: decision.note })
+            .values({ enquiryId: id, body: statusDecision.note })
             .returning();
 
           if (!created) {
@@ -171,7 +158,7 @@ export function createEnquiryUpdateHandler(
           {
             error: 'nothing_to_update',
             message:
-              'Send a different status, a note, a different attention flag, or a combination.',
+              'Send a different status, a note, a different attention flag, an edited reply, or a combination.',
           },
           { status: 422 },
         );

@@ -1,19 +1,20 @@
 import Link from 'next/link';
+import { PageLoadError } from '@/app/_components/page-load-error';
 import { getDb } from '@/lib/db/client';
 import { loadPipeline, type PipelineResponse } from '@/lib/api/pipeline';
-import { logFailure } from '@/lib/log';
+import { loadPageData } from '@/lib/api/page-load';
 import { PipelineBoard } from './pipeline-board';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PipelinePage() {
-  let pipeline: PipelineResponse | null = null;
+const LOAD_FAILURE =
+  'Could not load the pipeline. Check the database connection and reload.';
 
-  try {
-    pipeline = await loadPipeline(getDb());
-  } catch (error) {
-    logFailure('pipeline page', 'load', error);
-  }
+export default async function PipelinePage() {
+  const { data: pipeline, error } = await loadPageData<PipelineResponse>(
+    { label: 'pipeline page', action: 'load', failure: LOAD_FAILURE },
+    () => loadPipeline(getDb()),
+  );
 
   return (
     <main className="mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-7xl flex-col gap-6 px-6 py-8">
@@ -63,12 +64,7 @@ export default async function PipelinePage() {
           <PipelineBoard initialPipeline={pipeline} />
         )
       ) : (
-        <p
-          role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-        >
-          Could not load the pipeline. Check the database connection and reload.
-        </p>
+        <PageLoadError message={error ?? LOAD_FAILURE} />
       )}
     </main>
   );

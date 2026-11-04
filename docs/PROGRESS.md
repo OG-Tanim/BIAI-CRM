@@ -5,7 +5,8 @@ by" is ticked here and in its own file.
 
 ## Frontier
 
-All seven tickets are ticked. Handover is complete; there is no next ticket.
+All seven tickets are ticked. Handover is complete; there is no next ticket. S7 below is a
+post-handover review pass, not a ticket.
 
 | Card | Ticket                    | Blocked by | Done |
 | ---- | ------------------------- | ---------- | ---- |
@@ -29,6 +30,45 @@ Newest first. One entry per session, in this shape:
 - Traps hit:
 - Next:
 ```
+
+### S7 — Review fixes — 2026-11-04
+
+- Done: a `/code-review` pass since the empty tree reported 16 findings; all are fixed. Standards:
+  the health check moved out of `app/api` into `lib/api/health.ts` behind an injected port (the route
+  is a binding and the handler now has tests); `POST /api/extract` logs through `logFailure` instead
+  of three bespoke `console.error` calls; one OpenRouter client (`lib/ai/openrouter.ts`) owns the
+  request, timeout, envelope and the spec's single 429/5xx retry for both extraction and narration;
+  one placeholder scanner (`lib/domain/placeholders.ts`) replaces three copies, matching tokens
+  literally in replies and in the narration; the duplicate-phone warning renders in `Asia/Dhaka` via
+  `formatDateTime`; `db-push` and `db-verify` are TypeScript scripts sharing the `lib/db/branch.ts`
+  guards (`databaseIdentity`/`sameDatabase`) instead of comparing raw strings; the board, the seed's
+  queue check and the test harness use the domain clock and the normalised identity; the four
+  server-rendered pages share one load/error path (`lib/api/page-load.ts` + `PageLoadError`) and the
+  three JSON handlers share one body parser (`lib/api/request-body.ts`). Spec:
+  `PATCH /api/enquiries/:id` now accepts `suggested_reply` and `reply_filled`, so a reply can be
+  filled and copied after save, and a new `/enquiries/[id]` detail view shows the original message
+  verbatim, the reply template beside its filled text and the note history (the board and the list
+  link to it); `MOCK_AI=1` renders a mock-mode banner; the branch label is derived from the URL
+  actually opened (a `DATABASE_URL`-only process reports production; an explicit label without its
+  URL fails loudly); `updated_at` is stamped only on a status move, so the summary's `moved` count is
+  no longer inflated by notes or reply edits; `db:verify` requires zero rows only on production.
+  SPEC corrected where it contradicted the tickets: the 48-hour comparison is inclusive, and six
+  samples (not five) carry no phone (#9 included).
+- Verified: `tsc --noEmit` clean; `vitest run` 177 passed; `next build` clean with `/enquiries/[id]`
+  in the route table; `tsx scripts/db-verify.ts` reports testing 20/0 and production 0/0; live on
+  3110 the mock banner rendered, `/enquiries/<id>` showed the original message and reply panel, a
+  reply PATCH persisted and left `updated_at` untouched, an unallowlisted token returned 422, and
+  the row was restored unchanged.
+- Not done: still no real-model eval (no OpenRouter key here), so 20/20 remains a fixture check. No
+  browser automation: the reply panel was exercised through the same PATCH the UI calls, not by
+  clicking.
+- Traps hit: the session started read-only, so Vitest could not write `node_modules/.vite-temp` until
+  the file policy was widened; the first write is a human approval, not a code error. `tsx` resolves
+  the `@/` alias for scripts, which is why the plain-Node `.mjs` scripts could disappear. A reply
+  edit deliberately drops a stale `reply_filled` when the template changes without one supplied: the
+  old finished text answered the old wording.
+- Next: handover. With a real key and model, run `pnpm eval`; if the project continues, add a browser
+  test for the capture and reply flows.
 
 ### S6 — Hardening & handover — 2026-11-04
 

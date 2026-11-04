@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import type {
   PipelineCard,
   PipelineResponse,
 } from '@/lib/api/pipeline';
+import { messageFrom } from '@/lib/api/error-message';
 import { STATUSES, type Status } from '@/lib/domain/enquiry';
 import {
   INTEREST_LABELS,
@@ -19,21 +21,6 @@ type UpdateBody = {
   needs_attention?: boolean;
 };
 type UpdateResult = Promise<boolean>;
-
-function messageFrom(payload: unknown, fallback: string): string {
-  if (
-    typeof payload === 'object' &&
-    payload !== null &&
-    typeof (payload as { message?: unknown }).message === 'string'
-  ) {
-    const issues = (payload as { issues?: unknown }).issues;
-    const detail =
-      Array.isArray(issues) && issues.length > 0 ? ` ${issues.join('; ')}` : '';
-    return `${(payload as { message: string }).message}${detail}`;
-  }
-
-  return fallback;
-}
 
 export function PipelineBoard({
   initialPipeline,
@@ -237,6 +224,13 @@ function BoardCard({
         {card.last_contacted_at ? 'Contacted' : 'Created'}{' '}
         {formatAge(card.age_seconds)}
       </p>
+
+      <Link
+        href={`/enquiries/${card.id}`}
+        className="mt-1 inline-block text-[11px] font-medium text-slate-600 underline-offset-2 hover:text-slate-900 hover:underline"
+      >
+        Open enquiry →
+      </Link>
 
       <button
         type="button"

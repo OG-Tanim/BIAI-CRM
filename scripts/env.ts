@@ -3,8 +3,7 @@ import { loadEnvFile } from 'node:process';
 
 /**
  * Load `.env.local` first, then `.env`, without overwriting variables already
- * set by the shell. This is the TypeScript twin of `scripts/load-env.mjs`,
- * which the plain-Node tooling uses; keep the two in step.
+ * set by the shell. Every script and `drizzle.config.ts` uses this one loader.
  */
 export function loadEnv(): void {
   for (const file of ['.env.local', '.env']) {

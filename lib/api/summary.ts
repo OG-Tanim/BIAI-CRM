@@ -39,6 +39,10 @@ export type WeeklySummaryResponse = {
  * summary says" and "what the database counted" cannot drift apart. Every
  * number in `facts` comes from SQL; the narrator only sees the finished
  * object.
+ *
+ * `moved` counts status moves, not touches: `updated_at` is stamped only when
+ * a card changes status, so a note, an attention flag or a reply edit cannot
+ * inflate the week.
  */
 export async function loadSummaryFacts(
   db: SummaryStore,

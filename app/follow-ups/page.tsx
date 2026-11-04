@@ -1,22 +1,23 @@
 import Link from 'next/link';
+import { PageLoadError } from '@/app/_components/page-load-error';
 import {
   fetchFollowUps,
   type RemindersResponse,
 } from '@/lib/api/reminders';
 import { getDb } from '@/lib/db/client';
+import { loadPageData } from '@/lib/api/page-load';
 import { INTEREST_LABELS, STATUS_LABELS, formatAge, formatDateTime } from '@/lib/format';
-import { logFailure } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
-export default async function FollowUpsPage() {
-  let queue: RemindersResponse | null = null;
+const LOAD_FAILURE =
+  'Could not load the follow-up queue. Check the database connection and reload.';
 
-  try {
-    queue = await fetchFollowUps(getDb());
-  } catch (error) {
-    logFailure('follow-ups page', 'load', error);
-  }
+export default async function FollowUpsPage() {
+  const { data: queue, error } = await loadPageData<RemindersResponse>(
+    { label: 'follow-ups page', action: 'load', failure: LOAD_FAILURE },
+    () => fetchFollowUps(getDb()),
+  );
 
   return (
     <main className="mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-7xl flex-col gap-6 px-6 py-8">
@@ -43,13 +44,7 @@ export default async function FollowUpsPage() {
       </header>
 
       {queue === null ? (
-        <p
-          role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-        >
-          Could not load the follow-up queue. Check the database connection and
-          reload.
-        </p>
+        <PageLoadError message={error ?? LOAD_FAILURE} />
       ) : queue.total === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
           <p className="text-sm font-medium text-slate-800">

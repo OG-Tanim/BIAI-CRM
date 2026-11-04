@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { AiUnavailableError, type AiExtractor } from '@/lib/ai/extractor';
+import { readJsonObject } from '@/lib/api/request-body';
 import {
   ExtractionValidationError,
   validateExtraction,
 } from '@/lib/domain/extraction';
+import { logFailure } from '@/lib/log';
 
 /**
  * `POST /api/extract` — paste one message, get one editable proposal.
@@ -13,21 +15,11 @@ import {
  */
 export function createExtractHandler(extractor: AiExtractor) {
   return async function POST(request: Request): Promise<NextResponse> {
-    let body: unknown;
+    const parsed = await readJsonObject(request);
 
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { error: 'invalid_json', message: 'Request body must be JSON.' },
-        { status: 400 },
-      );
-    }
+    if (!parsed.ok) return parsed.response;
 
-    const message =
-      typeof body === 'object' && body !== null && 'message' in body
-        ? (body as { message?: unknown }).message
-        : undefined;
+    const message = parsed.body.message;
 
     if (typeof message !== 'string' || message.trim() === '') {
       return NextResponse.json(
@@ -42,17 +34,14 @@ export function createExtractHandler(extractor: AiExtractor) {
       raw = await extractor.extract(message);
     } catch (error) {
       if (error instanceof AiUnavailableError) {
-        console.error('[extract] AI unavailable:', error.message);
+        logFailure('extract', 'AI availability', error);
         return NextResponse.json(
           { error: 'ai_unavailable', message: 'AI extraction is unavailable.' },
           { status: 503 },
         );
       }
 
-      console.error(
-        '[extract] AI request failed:',
-        error instanceof Error ? error.message : 'unknown error',
-      );
+      logFailure('extract', 'AI request', error);
       return NextResponse.json(
         { error: 'ai_failed', message: 'AI extraction failed. Try again.' },
         { status: 502 },
@@ -66,7 +55,7 @@ export function createExtractHandler(extractor: AiExtractor) {
     } catch (error) {
       if (!(error instanceof ExtractionValidationError)) throw error;
 
-      console.error('[extract] invalid extraction:', error.issues.join('; '));
+      logFailure('extract', 'validation', error);
       return NextResponse.json(
         {
           error: 'invalid_extraction',
