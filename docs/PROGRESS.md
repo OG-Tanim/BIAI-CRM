@@ -5,14 +5,14 @@ by" is ticked here and in its own file.
 
 ## Frontier
 
-Next: **04 — Pipeline**
+Next: **05 — Follow-up & Summary**
 
 | Card | Ticket                    | Blocked by | Done |
 | ---- | ------------------------- | ---------- | ---- |
 | S0   | 01-foundation             | —          | [x]  |
 | S1   | 02-extraction             | 01         | [x]  |
 | S2   | 03-capture-and-save       | 02         | [x]  |
-| S3   | 04-pipeline               | 03         | [ ]  |
+| S3   | 04-pipeline               | 03         | [x]  |
 | S4   | 05-follow-up-and-summary  | 04         | [ ]  |
 | S5   | 06-test-data-and-eval     | 04         | [ ]  |
 | S6   | 07-hardening-and-handover | 05, 06     | [ ]  |
@@ -28,6 +28,34 @@ Newest first. One entry per session, in this shape:
 - Traps hit:
 - Next:
 ```
+
+### S3 — Pipeline — 2026-11-04
+
+- Done: the board at `/pipeline` has the five columns New → Lost, per-column counts, and cards
+  showing name, company, job title, interest, kind, a needs-attention flag and age in the current
+  status. `GET /api/pipeline` selects only `kind = 'sales_lead'` **in the query**, so spam, job
+  seekers, support and unclear messages never reach the view. `PATCH /api/enquiries/:id` moves a
+  card, stamps `last_contacted_at` and appends a note; a note alone (or a repeated status plus a
+  note) moves nothing and restamps nothing. `GET /api/enquiries?status=&kind=` backs the list view
+  at `/enquiries`, which deliberately shows every kind so a support thread or job seeker can be
+  found outside the board. The pure module gained `applyStatusChange`; the list filter parser and
+  the three route handlers live beside the existing enquiry handlers. 118 tests (21 new across the
+  two seams); `pnpm typecheck` and `pnpm build` clean.
+- Verified: live on port 3103 against the testing branch with five fixtures created through the
+  API. The board showed 2 leads (New 1, Interested 1) and omitted the spam, job-seeker and support
+  rows; moving a New card to Interested returned a fresh `last_contacted_at` and the note; a
+  note-only update left the card in New with `last_contacted_at: null`; `?status=new&kind=sales_lead`
+  returned Rafiq alone, `?kind=spam` returned the bot, and `?status=pending` returned 400. A
+  backdated row rendered as "In New for 3d". Fixtures were then deleted; `pnpm db:verify` reports
+  both branches at enquiries=0, notes=0.
+- Not done: nothing in the ticket. The follow-up queue, weekly summary and seed data remain for
+  S4/S5.
+- Traps hit: the card clock is `COALESCE(last_contacted_at, created_at)`, and every status move
+  stamps `last_contacted_at`; a note never does. The route-test harness moved to
+  `tests/support/database.ts` so the new suite reuses the rollback transaction rather than opening
+  a second pattern. `PATCH` validates a UUID before querying so a malformed id is a clean 404
+  rather than a Postgres cast error.
+- Next: start S4 — Follow-up & Summary (`05-follow-up-and-summary.md`).
 
 ### S2 — Capture & Save — 2026-11-04
 

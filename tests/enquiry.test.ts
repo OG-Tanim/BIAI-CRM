@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   EnquiryValidationError,
+  StatusChangeValidationError,
   UnfilledPlaceholderError,
+  applyStatusChange,
   pendingPlaceholders,
   prepareEnquiry,
   replyToCopy,
@@ -239,5 +241,110 @@ describe('pendingPlaceholders', () => {
     expect(pendingPlaceholders('The fee is 5,000 taka.')).toEqual([]);
     expect(pendingPlaceholders(null)).toEqual([]);
     expect(pendingPlaceholders(undefined)).toEqual([]);
+  });
+});
+
+describe('applyStatusChange', () => {
+  const now = new Date('2026-11-04T12:00:00.000Z');
+  const earlier = new Date('2026-11-01T09:30:00.000Z');
+
+  it('stamps contact time when a card moves out of New', () => {
+    const decision = applyStatusChange(
+      { status: 'new', lastContactedAt: null },
+      { status: 'contacted', note: 'Called and introduced ourselves.' },
+      now,
+    );
+
+    expect(decision.status).toBe('contacted');
+    expect(decision.lastContactedAt).toEqual(now);
+    expect(decision.note).toBe('Called and introduced ourselves.');
+    expect(decision.moved).toBe(true);
+    expect(decision.changed).toBe(true);
+  });
+
+  it('stamps contact time on a later move too', () => {
+    const decision = applyStatusChange(
+      { status: 'contacted', lastContactedAt: earlier },
+      { status: 'interested' },
+      now,
+    );
+
+    expect(decision.status).toBe('interested');
+    expect(decision.lastContactedAt).toEqual(now);
+    expect(decision.note).toBeNull();
+  });
+
+  it('a note with no status change moves nothing and restamps nothing', () => {
+    const decision = applyStatusChange(
+      { status: 'contacted', lastContactedAt: earlier },
+      { note: 'Left a voicemail.' },
+      now,
+    );
+
+    expect(decision.status).toBe('contacted');
+    expect(decision.lastContactedAt).toEqual(earlier);
+    expect(decision.note).toBe('Left a voicemail.');
+    expect(decision.moved).toBe(false);
+    expect(decision.changed).toBe(true);
+  });
+
+  it('treats a repeated status plus a note as note-only', () => {
+    const decision = applyStatusChange(
+      { status: 'interested', lastContactedAt: earlier },
+      { status: 'interested', note: 'Sent the schedule.' },
+      now,
+    );
+
+    expect(decision.status).toBe('interested');
+    expect(decision.lastContactedAt).toEqual(earlier);
+    expect(decision.moved).toBe(false);
+  });
+
+  it('reaches paid from any status, and only through this function', () => {
+    const decision = applyStatusChange(
+      { status: 'interested', lastContactedAt: earlier },
+      { status: 'paid', note: 'Payment verified in the bank.' },
+      now,
+    );
+
+    expect(decision.status).toBe('paid');
+    expect(decision.lastContactedAt).toEqual(now);
+  });
+
+  it('trims a note and treats a blank one as absent', () => {
+    const trimmed = applyStatusChange(
+      { status: 'new', lastContactedAt: null },
+      { note: '  Called.  ' },
+      now,
+    );
+    expect(trimmed.note).toBe('Called.');
+
+    const blank = applyStatusChange(
+      { status: 'new', lastContactedAt: null },
+      { note: '   ' },
+      now,
+    );
+    expect(blank.note).toBeNull();
+    expect(blank.changed).toBe(false);
+  });
+
+  it('rejects an unknown status without changing anything', () => {
+    expect(() =>
+      applyStatusChange(
+        { status: 'new', lastContactedAt: null },
+        { status: 'negotiating' },
+        now,
+      ),
+    ).toThrow(StatusChangeValidationError);
+  });
+
+  it('rejects a non-text note', () => {
+    expect(() =>
+      applyStatusChange(
+        { status: 'new', lastContactedAt: null },
+        { note: 42 },
+        now,
+      ),
+    ).toThrow(StatusChangeValidationError);
   });
 });

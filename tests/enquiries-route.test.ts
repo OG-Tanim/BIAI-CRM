@@ -1,47 +1,20 @@
-import { existsSync } from 'node:fs';
-import { loadEnvFile } from 'node:process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import { TransactionRollbackError } from 'drizzle-orm/errors';
-import postgres from 'postgres';
 import { createEnquiriesHandler } from '@/lib/api/enquiries';
 import { enquiries } from '@/lib/db/schema';
-import * as schema from '@/lib/db/schema';
+import {
+  assertSchemaPresent,
+  closeTestDatabase,
+  withRollback,
+} from './support/database';
 
 /**
  * Seam 2: the HTTP route against a real Postgres database.
  *
  * These tests are deliberately about the wiring a pure-function suite cannot
  * see: that the endpoint inserts one row, forces New, and reports an earlier
- * enquiry when a phone number repeats. Every test runs inside a transaction
- * that is rolled back, so the testing branch is left exactly as it was found —
- * including any demo data a later session has seeded.
- *
- * The connection always comes from TEST_DATABASE_URL.
+ * enquiry when a phone number repeats. The shared harness rolls every test
+ * back, so the testing branch is left exactly as it was found.
  */
-
-for (const file of ['.env.local', '.env']) {
-  if (existsSync(file)) loadEnvFile(file);
-}
-
-const url = process.env.TEST_DATABASE_URL;
-
-if (!url) {
-  throw new Error(
-    'TEST_DATABASE_URL is not set. Route tests need the throwaway testing branch.',
-  );
-}
-
-if (process.env.DATABASE_URL && process.env.DATABASE_URL === url) {
-  throw new Error(
-    'DATABASE_URL and TEST_DATABASE_URL are identical. Refusing to run route tests.',
-  );
-}
-
-const sql = postgres(url, { prepare: false, max: 1, connect_timeout: 10 });
-const db = drizzle(sql, { schema });
-
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 type App = {
   save: (body: unknown) => Promise<{
@@ -51,36 +24,21 @@ type App = {
   rows: () => Promise<Array<typeof enquiries.$inferSelect>>;
 };
 
-/**
- * Run one test inside a transaction that always rolls back.
- *
- * `tx.rollback()` throws a control-flow error; the only acceptable error out of
- * this helper is that one. A real failure inside the test still fails the test.
- */
 async function scenario(run: (app: App) => Promise<void>): Promise<void> {
-  try {
-    await db.transaction(async (tx) => {
-      const handler = createEnquiriesHandler({ db: tx });
+  await withRollback(async (tx) => {
+    const handler = createEnquiriesHandler({ db: tx });
 
-      await run({
-        async save(body) {
-          const response = await handler(request(body));
-          return {
-            response,
-            body: (await response.json()) as Record<string, unknown>,
-          };
-        },
-        rows: () => tx.select().from(enquiries),
-      });
-
-      tx.rollback();
+    await run({
+      async save(body) {
+        const response = await handler(request(body));
+        return {
+          response,
+          body: (await response.json()) as Record<string, unknown>,
+        };
+      },
+      rows: () => tx.select().from(enquiries),
     });
-  } catch (error) {
-    if (error instanceof TransactionRollbackError) return;
-    throw error;
-  }
-
-  throw new Error('The test transaction did not roll back.');
+  });
 }
 
 const RAW_MESSAGE = 'Apnader course certificate ta ki govt approved?';
@@ -113,24 +71,9 @@ function request(body: unknown): Request {
   });
 }
 
-beforeAll(async () => {
-  const found = await sql`
-    select table_name
-    from information_schema.tables
-    where table_schema = 'public'
-      and table_name in ('enquiries', 'notes')
-  `;
+beforeAll(assertSchemaPresent);
 
-  if (found.length !== 2) {
-    throw new Error(
-      'The testing branch is missing the enquiries/notes tables. Run pnpm db:push:test.',
-    );
-  }
-});
-
-afterAll(async () => {
-  await sql.end({ timeout: 5 });
-});
+afterAll(closeTestDatabase);
 
 describe('POST /api/enquiries', () => {
   it('creates exactly one enquiry, in New, with the original message verbatim', async () => {

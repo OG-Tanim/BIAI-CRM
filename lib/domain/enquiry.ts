@@ -13,6 +13,21 @@ import {
 } from '@/lib/domain/extraction';
 
 /**
+ * The capture and pipeline modules share one vocabulary. Re-exporting it here
+ * keeps callers from importing two domain modules for one enquiry.
+ */
+export {
+  CHANNELS,
+  INTERESTS,
+  KINDS,
+  REPLY_LANGUAGES,
+  type Channel,
+  type Interest,
+  type Kind,
+  type ReplyLanguage,
+};
+
+/**
  * I/O-free capture decisions.
  *
  * The operator's reviewed form is trusted to be human, not trusted to be
@@ -26,6 +41,29 @@ export type Status = (typeof STATUSES)[number];
 
 /** The only status a save may produce. The operator changes it later, never the form. */
 export const NEW_STATUS = 'new' satisfies Status;
+
+export const STATUS_LABELS: Record<Status, string> = {
+  new: 'New',
+  contacted: 'Contacted',
+  interested: 'Interested',
+  paid: 'Paid',
+  lost: 'Lost',
+};
+
+export const KIND_LABELS: Record<Kind, string> = {
+  sales_lead: 'Sales lead',
+  job_seeker: 'Job seeker',
+  support: 'Support',
+  spam: 'Spam',
+  unclear: 'Unclear',
+};
+
+export const INTEREST_LABELS: Record<Interest, string> = {
+  bootcamp: 'Bootcamp',
+  fellowship: 'Fellowship',
+  corporate: 'Corporate training',
+  unclear: 'Unclear',
+};
 
 /**
  * What a save writes. Deliberately not the database row type: the domain
@@ -76,6 +114,16 @@ export class UnfilledPlaceholderError extends Error {
     );
     this.name = 'UnfilledPlaceholderError';
     this.placeholders = placeholders;
+  }
+}
+
+export class StatusChangeValidationError extends Error {
+  readonly issues: string[];
+
+  constructor(issues: string[]) {
+    super(`Invalid status change: ${issues.join('; ')}`);
+    this.name = 'StatusChangeValidationError';
+    this.issues = issues;
   }
 }
 
@@ -226,5 +274,76 @@ export function prepareEnquiry(input: unknown, rawMessage: string): NewEnquiryVa
     suggestedReply: data.suggested_reply,
     replyFilled: resolveFilledReply(data.suggested_reply, data.reply_filled),
     replyLanguage: data.reply_language,
+  };
+}
+
+function isStatus(value: string): value is Status {
+  return (STATUSES as readonly string[]).includes(value);
+}
+
+export type StatusChangeDecision = {
+  status: Status;
+  lastContactedAt: Date | null;
+  note: string | null;
+  /** True only when the status actually differs from the current one. */
+  moved: boolean;
+  /** False for a request that changes neither the status nor a non-blank note. */
+  changed: boolean;
+};
+
+/**
+ * Decide what a card move actually writes.
+ *
+ * A move is an explicit operator action and stamps `lastContactedAt` with the
+ * supplied clock. A note appended without a move — including a request that
+ * repeats the current status — changes no status and restamps no contact time:
+ * writing down what was said is not the same as having just said it.
+ *
+ * There is deliberately no state machine. `paid` and `lost` are reachable from
+ * anywhere, and this function is the only way a status moves at all.
+ */
+export function applyStatusChange(
+  current: { status: Status; lastContactedAt: Date | null },
+  request: { status?: unknown; note?: unknown },
+  now: Date,
+): StatusChangeDecision {
+  const issues: string[] = [];
+  let requestedStatus: Status | null = null;
+
+  if (request.status !== undefined && request.status !== null) {
+    if (
+      typeof request.status !== 'string' ||
+      !isStatus(request.status)
+    ) {
+      issues.push(`status: must be one of ${STATUSES.join(', ')}.`);
+    } else {
+      requestedStatus = request.status;
+    }
+  }
+
+  let note: string | null = null;
+
+  if (request.note !== undefined && request.note !== null) {
+    if (typeof request.note !== 'string') {
+      issues.push('note: must be text.');
+    } else {
+      const trimmed = request.note.trim();
+      note = trimmed === '' ? null : trimmed;
+    }
+  }
+
+  if (issues.length > 0) {
+    throw new StatusChangeValidationError(issues);
+  }
+
+  const moved = requestedStatus !== null && requestedStatus !== current.status;
+  const status = moved && requestedStatus !== null ? requestedStatus : current.status;
+
+  return {
+    status,
+    lastContactedAt: moved ? now : current.lastContactedAt,
+    note,
+    moved,
+    changed: moved || note !== null,
   };
 }
