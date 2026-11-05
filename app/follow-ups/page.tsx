@@ -100,9 +100,12 @@ export default async function FollowUpsPage() {
                   <tr key={enquiry.id} className="align-top">
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-slate-900">
+                        <Link
+                          href={`/enquiries/${enquiry.id}`}
+                          className="font-medium text-slate-900 underline-offset-2 hover:underline"
+                        >
                           {enquiry.name}
-                        </span>
+                        </Link>
                         {enquiry.needs_attention ? (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
                             Attention
