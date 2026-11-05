@@ -14,6 +14,7 @@ import {
   STATUS_LABELS,
   formatDateTime,
 } from '@/lib/format';
+import { DeleteEnquiryButton } from './delete-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -233,12 +234,18 @@ export default async function EnquiriesPage({
                         {formatDateTime(enquiry.last_contacted_at)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs">
-                        <Link
-                          href={`/enquiries/${enquiry.id}`}
-                          className="font-medium text-slate-700 hover:text-slate-900"
-                        >
-                          Open
-                        </Link>
+                        <span className="flex flex-col items-start gap-1">
+                          <Link
+                            href={`/enquiries/${enquiry.id}`}
+                            className="font-medium text-slate-700 hover:text-slate-900"
+                          >
+                            Open
+                          </Link>
+                          <DeleteEnquiryButton
+                            id={enquiry.id}
+                            name={enquiry.name}
+                          />
+                        </span>
                       </td>
                     </tr>
                   ))}
