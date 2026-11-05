@@ -31,10 +31,51 @@ export function PipelineBoard({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | Status>('all');
+  const [attentionFilter, setAttentionFilter] = useState<
+    'all' | 'attention' | 'clear'
+  >('all');
 
-  // A capture screen can save an enquiry as Contacted after this board's
-  // payload was rendered or prefetched. Re-read the stored rows on mount and
-  // whenever the tab returns, so the card never sits in a stale column.
+  // Filtering is local: the board already holds every card, and a status move
+  // refetches the whole board, so filtering here stays correct without another
+  // round trip. The status filter chooses which columns render; the other two
+  // narrow the cards inside them.
+  const term = query.trim().toLowerCase();
+  const digits = term.replace(/[^\d+]/g, '');
+  const filtersActive =
+    term !== '' || statusFilter !== 'all' || attentionFilter !== 'all';
+
+  const visibleColumns = pipeline.columns
+    .filter((column) => statusFilter === 'all' || column.status === statusFilter)
+    .map((column) => {
+      const cards = column.cards.filter((card) => {
+        if (attentionFilter === 'attention' && !card.needs_attention) return false;
+        if (attentionFilter === 'clear' && card.needs_attention) return false;
+        if (term === '') return true;
+        if (card.name.toLowerCase().includes(term)) return true;
+
+        // Phone numbers are stored normalised; a number typed with spaces
+        // still matches on its digits.
+        return digits !== '' && card.phone !== null && card.phone.includes(digits);
+      });
+
+      return { ...column, cards, count: cards.length };
+    });
+  const visibleTotal = visibleColumns.reduce(
+    (sum, column) => sum + column.count,
+    0,
+  );
+
+  function clearFilters() {
+    setQuery('');
+    setStatusFilter('all');
+    setAttentionFilter('all');
+  }
+
+  // A capture screen can save an enquiry after this board's payload was
+  // rendered or prefetched. Re-read the stored rows on mount and whenever the
+  // tab returns, so a new card is never missing from a stale column.
   useEffect(() => {
     let active = true;
     let inFlight = false;
@@ -140,8 +181,87 @@ export function PipelineBoard({
         </p>
       ) : null}
 
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <label
+            htmlFor="pipeline-search"
+            className="flex w-full max-w-sm flex-col gap-1 text-xs font-medium text-slate-700"
+          >
+            Search the board
+            <input
+              id="pipeline-search"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Name or phone number"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            />
+          </label>
+
+          <label
+            htmlFor="pipeline-status"
+            className="flex flex-col gap-1 text-xs font-medium text-slate-700"
+          >
+            Status
+            <select
+              id="pipeline-status"
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value as 'all' | Status)
+              }
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="all">All statuses</option>
+              {STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {STATUS_LABELS[status]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label
+            htmlFor="pipeline-attention"
+            className="flex flex-col gap-1 text-xs font-medium text-slate-700"
+          >
+            Attention
+            <select
+              id="pipeline-attention"
+              value={attentionFilter}
+              onChange={(event) =>
+                setAttentionFilter(
+                  event.target.value as 'all' | 'attention' | 'clear',
+                )
+              }
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="all">Any</option>
+              <option value="attention">Needs attention</option>
+              <option value="clear">No attention</option>
+            </select>
+          </label>
+
+          {filtersActive ? (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            >
+              Clear filters
+            </button>
+          ) : null}
+        </div>
+
+        {filtersActive ? (
+          <p className="text-xs text-slate-600">
+            {visibleTotal} of {pipeline.total}{' '}
+            {pipeline.total === 1 ? 'lead' : 'leads'} shown.
+          </p>
+        ) : null}
+      </div>
+
       <div className="grid grid-flow-col auto-cols-[minmax(230px,1fr)] gap-4 overflow-x-auto pb-2">
-        {pipeline.columns.map((column) => (
+        {visibleColumns.map((column) => (
           <section
             key={column.status}
             aria-labelledby={`column-${column.status}`}
@@ -165,7 +285,9 @@ export function PipelineBoard({
             <div className="mt-3 flex flex-col gap-3">
               {column.cards.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-slate-300 px-3 py-4 text-center text-xs text-slate-500">
-                  No leads in this stage.
+                  {filtersActive
+                    ? 'No match in this stage.'
+                    : 'No leads in this stage.'}
                 </p>
               ) : (
                 column.cards.map((card) => (
@@ -246,6 +368,9 @@ function BoardCard({
         {card.company ?? 'No company'}
       </p>
       <p className="text-xs text-slate-500">{card.job_title ?? 'No role'}</p>
+      {card.phone ? (
+        <p className="text-xs text-slate-500">{card.phone}</p>
+      ) : null}
 
       <div className="mt-2 flex flex-wrap gap-1">
         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">

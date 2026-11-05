@@ -31,6 +31,7 @@ export type PipelineCard = Pick<
   | 'name'
   | 'company'
   | 'job_title'
+  | 'phone'
   | 'interest'
   | 'kind'
   | 'status'
@@ -71,6 +72,7 @@ function toCard(row: Enquiry, now: Date): PipelineCard {
     name: enquiry.name,
     company: enquiry.company,
     job_title: enquiry.job_title,
+    phone: enquiry.phone,
     interest: enquiry.interest,
     kind: enquiry.kind,
     status: enquiry.status,
