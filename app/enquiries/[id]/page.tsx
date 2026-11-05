@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { resolveAiMode } from '@/lib/ai/availability';
 import { fetchEnquiryDetail } from '@/lib/api/enquiry-detail';
 import { isEnquiryId } from '@/lib/api/id';
 import { getDb } from '@/lib/db/client';
@@ -156,7 +157,7 @@ export default async function EnquiryDetailPage({ params }: { params: Params }) 
         </pre>
       </section>
 
-      <ReplyPanel enquiry={enquiry} />
+      <ReplyPanel enquiry={enquiry} aiMode={resolveAiMode()} />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Notes</h2>
