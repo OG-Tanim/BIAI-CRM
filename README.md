@@ -28,3 +28,55 @@ invented fact reaches a customer; copying a reply that still has one asks for co
 
 The AI is an assistant throughout. It proposes fields and drafts replies, it never sets a status,
 and every screen stays usable by hand when the AI is unavailable.
+
+## Run it
+
+Node 20+, pnpm, and a Postgres database. The project's own environments use two Neon branches,
+**testing** and **production**.
+
+```bash
+pnpm install
+cp .env.example .env.local     # fill in the connection strings, then choose a mode
+pnpm db:push:test              # create the schema on the testing branch
+pnpm db:seed --target test     # optional: the twenty sample enquiries
+pnpm dev                       # http://localhost:3000
+```
+
+`DATABASE_BRANCH` selects the branch the app talks to: `testing` uses `TEST_DATABASE_URL`,
+`production` uses `DATABASE_URL`. With neither set, a process holding only `DATABASE_URL` is
+production, and one holding both is production too — the label comes from the URL that was actually
+opened, never from a separate setting that can disagree with it.
+
+`MOCK_AI=1` returns canned fixtures keyed to the sample messages, so the AI screens work with no key
+and no spend. Without a key and without mock mode the app still runs: the screens carry an
+"AI unavailable" banner, **Read message** and **Generate reply** are disabled, and every field stays
+editable and savable by hand.
+
+Use a different port without the `pnpm --` forwarding trap:
+
+```bash
+./node_modules/.bin/next dev -p 3100
+```
+
+`pnpm db:verify` reports table presence and row counts for both branches. Production holds the
+schema and zero rows; the seed refuses to run against it, and refuses when `TEST_DATABASE_URL`
+resolves to the same database as `DATABASE_URL`.
+
+## Testing
+
+```bash
+pnpm typecheck    # tsc --noEmit
+pnpm test         # Vitest
+pnpm build        # production build
+pnpm eval         # the twenty samples through the configured extractor
+```
+
+Tests live at two seams. The pure domain module (`lib/domain/*`) holds the decisions that are easy
+to get subtly wrong — extraction and reply validation, the placeholder allowlist, status transitions,
+the 48-hour rule — with no database and no network. The HTTP routes (`lib/api/*`) cover the wiring a
+pure suite cannot see: what a save writes, what the board and queue exclude, which error codes come
+back. Those run against `TEST_DATABASE_URL` and roll back inside a transaction.
+
+Nothing is tested through the UI, and the AI is always replaced by a fake or a fixture. With
+`MOCK_AI=1`, `pnpm eval` checks the harness and fixtures rather than model quality; with a real key
+and model it becomes the measurement.
