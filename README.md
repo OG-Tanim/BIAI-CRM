@@ -11,7 +11,7 @@ background jobs. It is built to be run by the team behind the company's existing
 
 | Screen | What it is for |
 | --- | --- |
-| **Capture** (`/`) | Paste a message, let AI propose the fields, correct them, save. With AI off, fill the fields in by hand. The original message is kept byte for byte. |
+| **Capture** (`/`) | Paste a message, then type the details yourself or have AI propose them. **Read message** fills the enquiry details only; the Reply box is drafted separately by **Generate reply**, then edited and copied at any point. Correct anything wrong and save; the original message is kept byte for byte. |
 | **Pipeline** (`/pipeline`) | Five columns — New, Contacted, Interested, Paid, Lost — containing genuine sales leads only. Move a card, append a note, flag it for attention. |
 | **Follow-ups** (`/follow-ups`) | Sales leads in New or Contacted whose last contact (or creation) is at least 48 hours old, oldest first. |
 | **List** (`/enquiries`) | Every enquiry of every kind, filterable by status and kind. This is where spam, job seekers and support threads remain findable. |
@@ -42,9 +42,9 @@ The whole application follows one setting, resolved in `lib/ai/availability.ts`:
 
 | Mode | How to select it | What happens |
 | --- | --- | --- |
-| **Live** | `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` set, `MOCK_AI=0` | Extraction and the weekly narration call OpenRouter. |
+| **Live** | `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` set, `MOCK_AI=0` | Extraction, reply generation and the weekly narration call OpenRouter. |
 | **Mock** | `MOCK_AI=1` | Canned fixtures keyed to the sample messages. No network call, no spend. A banner says the AI is in mock mode, so canned text is never presented as a live answer. This is the safe local default during development. |
-| **Unavailable** | `MOCK_AI=0` and no key/model | The app loads normally. A banner says AI is unavailable, the **Read message** button is disabled, and **Fill in manually** still saves an enquiry. `/summary` shows its counts without prose. |
+| **Unavailable** | `MOCK_AI=0` and no key/model | The app loads normally. A banner says AI is unavailable, **Read message** and **Generate reply** are disabled, and the details form and reply box are still fully editable by hand and save an enquiry. `/summary` shows its counts without prose. |
 
 Try the no-key path with the environment overriding `.env.local`:
 
@@ -108,14 +108,22 @@ it back.
 These are the decisions worth knowing before changing the system.
 
 - **A save is a reviewed proposal, not an autosave.** AI fills a form; a human edits it; only then
-  is a row written. Nothing is stored by `/api/extract`, so a bad extraction costs a retry, not a
-  bad record.
-- **Status is human-owned.** Extraction never returns a status, a save always writes `new`, and
+  is a row written. Nothing is stored by `/api/extract` or `/api/reply`, so a bad extraction costs a
+  retry, not a bad record.
+- **Manual capture is a first-class path, not an error state.** The details form is always open, so
+  an operator can type every field without an AI request; **Read message** is an optional autofill
+  of the details. The original message is still required, because a row without its source is
+  evidence-free. Extraction asks before replacing details already typed by hand, and it leaves the
+  reply box untouched.
+- **Reply drafting is a separate AI action.** **Read message** extracts identity and classification
+  only. **Generate reply** is the one AI path that writes the reply box; it takes the pasted message
+  and nothing else.
+- **Status is human-owned.** Extraction never returns a status, a save writes `new` unless the operator ticks Contacted (which requires a reply), and
   only `PATCH /api/enquiries/:id` moves a card. `paid` is a human assertion, not a payment event.
 - **Nothing important is only on the capture screen.** The list row is a summary, but
-  `/enquiries/:id` keeps the original message verbatim, the reply template beside its filled text,
-  and every note in order. The reply is editable there, because a template is often filled once the
-  price or start date is known, and the text actually sent should outlive the tab it was typed in.
+  `/enquiries/:id` keeps the original message verbatim, the single editable reply, and every note in
+  order. The reply is editable there, because it often changes once the price or start date is
+  known, and the text actually sent should outlive the tab it was typed in.
 - **Notes are written where the move happens.** A note is appended from the board and read back on
   the enquiry; it is attached to one enquiry and never edited.
 - **Leaving New is the contact moment.** `applyStatusChange` stamps `last_contacted_at` only when a
@@ -129,19 +137,36 @@ These are the decisions worth knowing before changing the system.
 - **Duplicates warn; they never block.** A repeat phone number returns the earliest matching
   enquiry in `duplicateOf`. Both rows are kept, because a repeat message may be a second deal or a
   different person sharing a phone.
-- **Replies carry placeholders, never invented facts.** Only nine tokens are allowed. A reply with
-  an unknown token is voided, and copying warns while a token survives. The summary follows the
-  same rule: the model may use only `{{received}}`-style count tokens, and the server renders them
-  from the same facts it computed.
-- **A Bangla-script message must get a Bangla-script reply.** The guard is deterministic and runs
-  after the model: if the message has Bengali script and the reply is labelled English or contains
-  no Bengali, the reply becomes `null` rather than shipping in the wrong language.
+- **Replies use placeholders instead of invented facts.** The prompt restricts the model to nine
+  tokens, and the operator is warned about every surviving placeholder before copying. Generated
+  replies are used as the model wrote them; the allowlist is enforced when an operator edits a reply.
+  Capture and detail each show one editable reply box; **Generate reply** drafts only that box. The
+  summary follows the same rule: the model may use only `{{received}}`-style count tokens, and the
+  server renders them from the same facts it computed.
+- **The AI matches the reply language inside the prompt.** The prompt asks the model to evaluate the
+  message first — Bangla, Banglish or English — then write the reply in that same language. Language
+  is never returned, stored, or shown as a field; there is no deterministic script check and no
+  manual language selector. The model's reply text is used as written.
 - **AI failure is visible, not silent.** Missing configuration produces a banner and a 503; a
   provider failure produces a 502 with a message. Manual capture and every database screen work
   without AI.
 - **One model from configuration.** `OPENROUTER_MODEL` is a setting, never a constant, and there is
   no fallback chain. `MOCK_AI=1` wins over a configured key so a local session cannot spend a
   request by accident.
+- **One timeout from configuration.** `OPENROUTER_TIMEOUT_MS` is the per-attempt ceiling for every
+  AI call — extraction, reply generation and the weekly summary — and defaults to 45 s when unset.
+  It is a setting for the same reason the model is: a reasoning phase on a slow or local model can
+  run longer than a hosted free model allows. The single retry still applies, so the worst case is
+  two ceilings plus the 750 ms backoff.
+- **Thinking is off for every AI call.** The request carries
+  `chat_template_kwargs: { enable_thinking: false }`, so a reasoning model answers instead of
+  spending the token budget and the timeout on a phase nobody reads. The flag belongs inside
+  `chat_template_kwargs`: the local MLX server ignores a top-level `enable_thinking`.
+  Hosted OpenRouter is the exception. Its parameter list is `reasoning`, `reasoning_effort` and
+  `include_reasoning`, and it allows the extra field without error, so calls against OpenRouter
+  still succeed — but `chat_template_kwargs` is inert there and thinking stays at the model's
+  default. On that endpoint the switch is `reasoning: { effort: "none" }`, which models whose
+  reasoning is mandatory reject; the token budgets and timeout, not the flag, protect those calls.
 
 ## Deliberate cuts
 
@@ -196,12 +221,13 @@ The following are out of scope for v1, not oversights:
 
 Tests live at two seams only:
 
-1. **The pure domain module** (`lib/domain/*`) — extraction validation, the Bengali guard,
-   placeholders, status transitions, the 48-hour decision and summary narration. No database, no
-   network.
+1. **The pure domain module** (`lib/domain/*`) — extraction and reply validation, the placeholder
+   allowlist, status transitions, the 48-hour decision and summary narration. No database,
+   no network.
 2. **The HTTP routes** (`lib/api/*` with real handlers) — the wiring a pure suite cannot see: one
    insert per save, status forced to `new`, non-leads excluded from the board and queue, duplicate
-   reporting, AI failure codes. Database tests run inside transactions that roll back.
+   reporting, reply-only generation, AI failure codes. Database tests run inside transactions that
+   roll back.
 
 Nothing is tested through the UI, and the AI is always replaced by a fake or a fixture. The enquiry
 detail page and its reply panel add no third seam: the panel PATCHes the same endpoint the board

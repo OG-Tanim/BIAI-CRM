@@ -4,34 +4,28 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { EnquiryDto } from '@/lib/api/enquiry-dto';
 import { messageFrom } from '@/lib/api/error-message';
-import {
-  UnfilledPlaceholderError,
-  pendingPlaceholders,
-  replyToCopy,
-} from '@/lib/domain/enquiry';
+import { pendingPlaceholders } from '@/lib/domain/enquiry';
 
 type Notice = { kind: 'ok' | 'warn' | 'error'; text: string };
 
 /**
  * The reply after save.
  *
- * The capture screen owns the first draft, but a template often gets filled
- * once the operator knows the price or the start date. That edit belongs to the
- * enquiry, not to a transient form, so the template and the finished text are
- * saved here through the same PATCH the board uses.
+ * The capture screen owns the first draft, but the reply often changes once the
+ * operator knows the price or the start date. That edit belongs to the enquiry,
+ * not to a transient form, so the single reply box is saved here through the
+ * same PATCH the board uses.
  */
 export function ReplyPanel({ enquiry }: { enquiry: EnquiryDto }) {
   const router = useRouter();
-  const [template, setTemplate] = useState(enquiry.suggested_reply);
-  const [filled, setFilled] = useState(enquiry.reply_filled ?? '');
+  const initialReply = enquiry.reply_filled ?? enquiry.suggested_reply;
+  const [reply, setReply] = useState(initialReply);
+  const [baseline, setBaseline] = useState(initialReply);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  const copyText = filled.trim() === '' ? template : filled;
-  const missing = pendingPlaceholders(copyText);
-  const dirty =
-    template !== enquiry.suggested_reply ||
-    filled !== (enquiry.reply_filled ?? '');
+  const missing = pendingPlaceholders(reply);
+  const dirty = reply !== baseline;
 
   async function save() {
     setBusy(true);
@@ -41,9 +35,11 @@ export function ReplyPanel({ enquiry }: { enquiry: EnquiryDto }) {
       const response = await fetch(`/api/enquiries/${enquiry.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
+        // The one box is mirrored into both stored reply columns, so older
+        // readers and this panel always show the same text.
         body: JSON.stringify({
-          suggested_reply: template,
-          reply_filled: filled.trim() === '' ? null : filled,
+          suggested_reply: reply,
+          reply_filled: reply.trim() === '' ? null : reply,
         }),
       });
       const payload: unknown = await response.json();
@@ -57,8 +53,10 @@ export function ReplyPanel({ enquiry }: { enquiry: EnquiryDto }) {
       }
 
       const updated = (payload as { enquiry: EnquiryDto }).enquiry;
-      setTemplate(updated.suggested_reply);
-      setFilled(updated.reply_filled ?? '');
+      const savedReply =
+        updated.reply_filled ?? updated.suggested_reply;
+      setReply(savedReply);
+      setBaseline(savedReply);
       setNotice({ kind: 'ok', text: 'Reply saved to this enquiry.' });
       router.refresh();
     } catch {
@@ -72,85 +70,68 @@ export function ReplyPanel({ enquiry }: { enquiry: EnquiryDto }) {
   }
 
   async function copy() {
-    try {
-      const text = replyToCopy({
-        suggestedReply: template,
-        replyFilled: filled.trim() === '' ? null : filled,
+    if (reply.trim() === '') {
+      setNotice({ kind: 'warn', text: 'There is no reply to copy yet.' });
+      return;
+    }
+
+    const tokens = missing.map((token) => `{{${token}}}`).join(', ');
+
+    if (
+      missing.length > 0 &&
+      !window.confirm(`This reply still contains ${tokens}. Copy it anyway?`)
+    ) {
+      setNotice({
+        kind: 'warn',
+        text: `Not copied — fill ${tokens} before sending.`,
       });
+      return;
+    }
 
-      await navigator.clipboard.writeText(text);
-      setNotice({ kind: 'ok', text: 'Copied the filled reply.' });
-    } catch (error) {
-      if (error instanceof UnfilledPlaceholderError) {
-        setNotice({
-          kind: 'warn',
-          text:
-            error.placeholders.length > 0
-              ? `Not copied — fill ${error.placeholders
-                  .map((token) => `{{${token}}}`)
-                  .join(', ')} first.`
-              : 'Not copied — the reply still contains an unfilled placeholder.',
-        });
-        return;
-      }
-
+    try {
+      await navigator.clipboard.writeText(reply);
+      setNotice(
+        missing.length > 0
+          ? {
+              kind: 'warn',
+              text: `Copied, but the reply still contains ${tokens}. Fill them before sending.`,
+            }
+          : { kind: 'ok', text: 'Copied the reply.' },
+      );
+    } catch {
       setNotice({ kind: 'error', text: 'Could not reach the clipboard.' });
     }
   }
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-900">Reply</h2>
-          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
-            The template keeps its placeholders; the filled version is what gets
-            copied. Both are stored on the enquiry, so the reply actually sent
-            is on record after the tab closes.
-          </p>
-        </div>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-          {enquiry.reply_language === 'bn'
-            ? 'বাংলা'
-            : enquiry.reply_language === 'banglish'
-              ? 'Banglish'
-              : 'English'}
-        </span>
+      <div>
+        <h2 className="text-sm font-semibold text-slate-900">Reply</h2>
+        <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
+          One reply, stored on the enquiry, so the text actually sent is on
+          record after the tab closes. Placeholders ask before they are copied.
+        </p>
       </div>
 
       <label
-        htmlFor="reply-template"
+        htmlFor="reply"
         className="mt-4 block text-xs font-medium text-slate-700"
       >
-        Reply template
+        Reply
       </label>
       <textarea
-        id="reply-template"
-        value={template}
-        onChange={(event) => setTemplate(event.target.value)}
-        rows={4}
-        className="mt-1 w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-      />
-
-      <label
-        htmlFor="reply-filled"
-        className="mt-4 block text-xs font-medium text-slate-700"
-      >
-        Filled reply — what gets copied
-      </label>
-      <textarea
-        id="reply-filled"
-        value={filled}
-        onChange={(event) => setFilled(event.target.value)}
-        rows={4}
-        placeholder="Fill the placeholders here once you know the answers."
+        id="reply"
+        value={reply}
+        onChange={(event) => setReply(event.target.value)}
+        rows={6}
+        placeholder="Write the reply here."
         className="mt-1 w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
       />
 
       {missing.length > 0 ? (
         <p className="mt-2 text-xs font-medium text-amber-700">
           Needs filling: {missing.map((token) => `{{${token}}}`).join(', ')}.
-          Copying warns until it is filled.
+          Copying asks for confirmation until it is filled.
         </p>
       ) : (
         <p className="mt-2 text-xs text-slate-500">

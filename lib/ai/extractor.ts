@@ -5,12 +5,13 @@ import {
 import { mockExtractionFor } from '@/lib/ai/mock-fixtures';
 import { resolveAiMode } from '@/lib/ai/availability';
 import { AiResponseError, AiUnavailableError } from '@/lib/ai/errors';
-import { createOpenRouterClient } from '@/lib/ai/openrouter';
+import { parseModelJson } from '@/lib/ai/model-json';
+import { createOpenRouterClient, resolveTimeoutMs } from '@/lib/ai/openrouter';
 
 /**
- * The single AI port. Everything above this line sees a plain function that
- * turns one message into an unvalidated model answer; everything below is
- * replaceable in tests and in mock mode.
+ * The extraction AI port. `ReplyWriter` in `lib/ai/reply.ts` is the narrower
+ * port used when the operator asks for only a reply. Both turn one message into
+ * an unvalidated model answer and are replaceable in tests and in mock mode.
  */
 export type AiExtractor = {
   extract(message: string): Promise<unknown>;
@@ -22,6 +23,15 @@ export { AiResponseError, AiUnavailableError };
 
 type Env = Record<string, string | undefined>;
 
+/**
+ * The JSON answer is short, but `max_tokens` also pays for a reasoning phase:
+ * on the sample messages a free reasoning model spent over 1,300 tokens
+ * thinking, so 1,200 returned no JSON at all on most attempts. 2,500 leaves
+ * room for the thought and the object, and costs nothing when the model stops
+ * early.
+ */
+const EXTRACTION_MAX_TOKENS = 2_500;
+
 export type OpenRouterConfig = {
   apiKey: string;
   model: string;
@@ -29,26 +39,6 @@ export type OpenRouterConfig = {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
 };
-
-/**
- * Parse the JSON object out of a model answer, tolerating a stray code fence
- * or a sentence before the object. It still has to be valid JSON: a reply we
- * cannot parse is an AI failure, not something to repair by hand.
- */
-function parseModelJson(content: string): unknown {
-  const start = content.indexOf('{');
-  const end = content.lastIndexOf('}');
-
-  if (start === -1 || end <= start) {
-    throw new AiResponseError('The model did not return a JSON object.');
-  }
-
-  try {
-    return JSON.parse(content.slice(start, end + 1));
-  } catch {
-    throw new AiResponseError('The model returned malformed JSON.');
-  }
-}
 
 export function createOpenRouterExtractor(config: OpenRouterConfig): AiExtractor {
   const client = createOpenRouterClient({
@@ -66,7 +56,7 @@ export function createOpenRouterExtractor(config: OpenRouterConfig): AiExtractor
           { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
           { role: 'user', content: buildExtractionUserPrompt(message) },
         ],
-        maxTokens: 1200,
+        maxTokens: EXTRACTION_MAX_TOKENS,
         jsonMode: true,
       });
 
@@ -117,6 +107,7 @@ export function createExtractorFromEnv(env: Env = process.env): AiExtractor {
     apiKey,
     model,
     baseUrl: env.OPENROUTER_BASE_URL,
+    timeoutMs: resolveTimeoutMs(env),
   });
 }
 

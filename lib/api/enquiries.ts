@@ -71,8 +71,9 @@ async function findEarlierEnquiry(
 /**
  * `POST /api/enquiries` — save a reviewed proposal.
  *
- * One insert, always `new`. A phone number already on file produces a warning
- * naming the earlier enquiry; it never blocks the save.
+ * One insert, `new` unless the explicit contacted flag is set. A phone number
+ * already on file produces a warning naming the earlier enquiry; it never
+ * blocks the save.
  */
 export function createEnquiriesHandler(options: { db?: EnquiryStore } = {}) {
   return async function POST(request: Request): Promise<NextResponse> {

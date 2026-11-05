@@ -94,10 +94,10 @@ export default function RootLayout({
                 switched off.
               </p>
               <p className="mt-1 text-amber-900">
-                The CRM still works: on Capture, paste the message and choose{' '}
-                <span className="font-medium">Fill in manually</span>. Saving,
-                the pipeline, follow-ups and the list read and write the
-                database as usual.
+                The CRM still works: on Capture, Read message and Generate
+                reply are off, but you can type every detail — including the
+                reply — in by hand. Saving, the pipeline, follow-ups and the
+                list read and write the database as usual.
               </p>
             </div>
           </div>

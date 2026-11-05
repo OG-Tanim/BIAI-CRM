@@ -6,7 +6,6 @@ import type {
   Channel,
   Interest,
   Kind,
-  ReplyLanguage,
 } from '@/lib/domain/extraction';
 import { parseCsv } from './lib/csv';
 
@@ -52,7 +51,6 @@ export type SampleEnquiry = {
 export type SampleExpectation = {
   kind: Kind;
   interest: Interest;
-  replyLanguage: ReplyLanguage;
   /** The person's name with any role and company removed from the sender line. */
   name: string;
   company: string | null;
@@ -148,7 +146,7 @@ export const SAMPLE_ENQUIRIES: readonly SampleEnquiry[] = readSamples();
 /**
  * The frozen expectation for each row.
  *
- * The kind/interest/language trio is the fixture table's contract. The
+ * The kind/interest pair is the fixture table's contract. The
  * name/company/role entries come from the anomalies the spec calls out: the
  * role inside #3, #10 and #18's sender line must be lifted out, and every
  * individual must keep a clean name. The seed status is a demo decision, not
@@ -158,7 +156,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   1: {
     kind: 'sales_lead',
     interest: 'bootcamp',
-    replyLanguage: 'banglish',
     name: 'Rafi Ahmed',
     company: null,
     jobTitle: null,
@@ -170,7 +167,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   2: {
     kind: 'sales_lead',
     interest: 'fellowship',
-    replyLanguage: 'bn',
     name: 'Tahmina Akter',
     company: null,
     jobTitle: null,
@@ -182,7 +178,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   3: {
     kind: 'sales_lead',
     interest: 'corporate',
-    replyLanguage: 'en',
     name: 'Mahmud Hasan',
     company: 'Gazipur textile company',
     jobTitle: 'Managing Director',
@@ -195,7 +190,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   4: {
     kind: 'sales_lead',
     interest: 'bootcamp',
-    replyLanguage: 'banglish',
     name: 'Sabbir',
     company: null,
     jobTitle: null,
@@ -207,7 +201,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   5: {
     kind: 'sales_lead',
     interest: 'unclear',
-    replyLanguage: 'en',
     name: 'Nasreen Sultana',
     company: null,
     jobTitle: null,
@@ -220,7 +213,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   6: {
     kind: 'sales_lead',
     interest: 'unclear',
-    replyLanguage: 'banglish',
     name: 'Ishtiaq',
     company: null,
     jobTitle: null,
@@ -232,7 +224,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   7: {
     kind: 'support',
     interest: 'unclear',
-    replyLanguage: 'bn',
     name: 'Farzana Rahman',
     company: null,
     jobTitle: null,
@@ -245,7 +236,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   8: {
     kind: 'sales_lead',
     interest: 'unclear',
-    replyLanguage: 'en',
     name: 'Anika Chowdhury',
     company: null,
     jobTitle: null,
@@ -257,7 +247,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   9: {
     kind: 'sales_lead',
     interest: 'bootcamp',
-    replyLanguage: 'banglish',
     name: 'Jahid',
     company: null,
     jobTitle: null,
@@ -269,7 +258,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   10: {
     kind: 'sales_lead',
     interest: 'corporate',
-    replyLanguage: 'en',
     name: 'Kamrul Islam',
     company: 'a bank in Motijheel',
     companyPattern: /bank.*motijheel/i,
@@ -283,7 +271,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   11: {
     kind: 'spam',
     interest: 'unclear',
-    replyLanguage: 'en',
     name: 'Earn Crypto Daily',
     company: null,
     jobTitle: null,
@@ -295,7 +282,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   12: {
     kind: 'sales_lead',
     interest: 'bootcamp',
-    replyLanguage: 'banglish',
     name: 'Rafi Ahmed',
     company: null,
     jobTitle: null,
@@ -307,7 +293,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   13: {
     kind: 'sales_lead',
     interest: 'fellowship',
-    replyLanguage: 'bn',
     name: 'Mim',
     company: null,
     jobTitle: null,
@@ -319,7 +304,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   14: {
     kind: 'sales_lead',
     interest: 'fellowship',
-    replyLanguage: 'en',
     name: 'Shirin Sultana',
     company: null,
     jobTitle: null,
@@ -332,7 +316,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   15: {
     kind: 'sales_lead',
     interest: 'bootcamp',
-    replyLanguage: 'banglish',
     name: 'Tanvir',
     company: null,
     jobTitle: null,
@@ -344,7 +327,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   16: {
     kind: 'support',
     interest: 'unclear',
-    replyLanguage: 'en',
     name: 'Habibur Rahman',
     company: null,
     jobTitle: null,
@@ -357,7 +339,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   17: {
     kind: 'sales_lead',
     interest: 'unclear',
-    replyLanguage: 'banglish',
     name: 'Nowshin',
     company: null,
     jobTitle: null,
@@ -369,7 +350,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   18: {
     kind: 'sales_lead',
     interest: 'corporate',
-    replyLanguage: 'bn',
     name: 'Rezaul Karim',
     company: 'small garment factory',
     jobTitle: 'owner',
@@ -382,7 +362,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   19: {
     kind: 'sales_lead',
     interest: 'fellowship',
-    replyLanguage: 'en',
     name: 'Samira',
     company: null,
     jobTitle: null,
@@ -395,7 +374,6 @@ const EXPECTATIONS: Record<number, SampleExpectation> = {
   20: {
     kind: 'job_seeker',
     interest: 'unclear',
-    replyLanguage: 'en',
     name: 'Arif Hossain',
     company: null,
     jobTitle: null,
@@ -457,7 +435,6 @@ export function seedEnquiryValues(sample: SampleEnquiry): NewEnquiry {
     rawMessage: sample.message,
     suggestedReply: '',
     replyFilled: null,
-    replyLanguage: expectation.replyLanguage,
     createdAt: sample.receivedAt,
     lastContactedAt: contactedAt,
     updatedAt: contactedAt ?? sample.receivedAt,

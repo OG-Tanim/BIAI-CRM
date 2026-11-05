@@ -33,7 +33,6 @@ export const enquiries = pgTable(
     rawMessage: text('raw_message').notNull(),
     suggestedReply: text('suggested_reply').notNull().default(''),
     replyFilled: text('reply_filled'),
-    replyLanguage: text('reply_language').notNull().default('en'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -60,10 +59,6 @@ export const enquiries = pgTable(
     check(
       'enquiries_status_check',
       sql`${table.status} in ('new','contacted','interested','paid','lost')`,
-    ),
-    check(
-      'enquiries_reply_language_check',
-      sql`${table.replyLanguage} in ('en','banglish','bn')`,
     ),
   ],
 );

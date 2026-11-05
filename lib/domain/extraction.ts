@@ -7,26 +7,26 @@ import {
 export { hasUnfilledPlaceholder };
 
 /**
- * I/O-free extraction decisions.
+ * I/O-free extraction and reply-contract decisions.
  *
  * Everything in this module is a pure function over values: no database, no
- * network, no clock. The model is allowed to be wrong; these functions decide
- * what survives. Invalid nullable fields become `null`, a reply that breaks a
- * hard rule is voided, and the contract shape is the only shape that leaves.
+ * network, no clock. Extraction answers are shape-checked; invalid nullable
+ * fields become `null` and the contract shape is the only shape that leaves.
+ * Reply drafts are returned as the model wrote them. The placeholder allowlist
+ * is enforced only when an operator edits a reply.
  */
 
 export const CHANNELS = ['whatsapp', 'facebook', 'website', 'email', 'phone'] as const;
 export const INTERESTS = ['bootcamp', 'fellowship', 'corporate', 'unclear'] as const;
 export const KINDS = ['sales_lead', 'job_seeker', 'support', 'spam', 'unclear'] as const;
-export const REPLY_LANGUAGES = ['en', 'banglish', 'bn'] as const;
 
 export type Channel = (typeof CHANNELS)[number];
 export type Interest = (typeof INTERESTS)[number];
 export type Kind = (typeof KINDS)[number];
-export type ReplyLanguage = (typeof REPLY_LANGUAGES)[number];
 
 /**
- * The nine tokens a reply may carry. Anything else is a model invention.
+ * The nine tokens the reply prompt asks the model to use. The manual reply
+ * editor rejects anything else; generated replies are not checked.
  */
 export const ALLOWED_PLACEHOLDERS = [
   'price',
@@ -45,9 +45,9 @@ export type AllowedPlaceholder = (typeof ALLOWED_PLACEHOLDERS)[number];
 const allowedPlaceholderSet: ReadonlySet<string> = new Set(ALLOWED_PLACEHOLDERS);
 
 /**
- * The contract shape the route returns. `suggested_reply` is nullable because
- * the placeholder and language guards void a bad reply rather than passing it
- * through. Every other key is always present, even when its value is null.
+ * The contract shape the route returns. Every key is always present, even when
+ * its value is null. Read message extracts identity and classification only;
+ * the reply is generated separately by `/api/reply`.
  *
  * There is deliberately no `status` key: status belongs to the operator.
  */
@@ -61,9 +61,16 @@ export type ExtractionResult = {
   interest: Interest;
   kind: Kind;
   summary: string;
-  suggested_reply: string | null;
-  reply_language: ReplyLanguage;
   needs_attention: boolean;
+};
+
+/**
+ * The reply-only generation contract. The capture screen's Generate reply
+ * button uses this when the operator wants a reply without a full extraction.
+ * The model's text is returned as-is; there is no server-side reply guard.
+ */
+export type ReplyDraft = {
+  reply: string | null;
 };
 
 export class ExtractionValidationError extends Error {
@@ -86,19 +93,7 @@ export class PlaceholderNotAllowedError extends Error {
   }
 }
 
-const BENGALI_SCRIPT = /[\u0980-\u09FF]/;
 const BENGALI_DIGITS = '০১২৩৪৫৬৭৮৯';
-
-/**
- * The one deterministic language fact: does this text use Bengali script?
- *
- * Romanised Bangla (Banglish) is deliberately not detected here. Telling it
- * apart from English is a judgement call, and a wrong label is worse than no
- * label.
- */
-export function hasBengaliScript(value: string | null | undefined): boolean {
-  return typeof value === 'string' && BENGALI_SCRIPT.test(value);
-}
 
 function toAsciiDigits(value: string): string {
   return value.replace(/[০-৯]/g, (digit) => String(BENGALI_DIGITS.indexOf(digit)));
@@ -126,8 +121,8 @@ export function normalizePhone(value: unknown): string | null {
 /**
  * Throw when a reply carries a `{{token}}` outside the allowlist.
  *
- * Used directly by callers that want to reject a reply, and wrapped by
- * `validateExtraction`, which voids the reply instead of failing the request.
+ * Used by the manual reply editor, where an operator-edited template must stay
+ * inside the nine-token contract. Generated replies are not checked here.
  */
 export function assertPlaceholdersAllowed(reply: string): void {
   for (const token of placeholderTokens(reply)) {
@@ -164,9 +159,9 @@ const attentionField = z.preprocess(
 
 /**
  * The model's answer, before the guards. Unknown keys are stripped by Zod, so
- * a `status` the model invents never reaches the response. Fields that are
- * nullable in the contract degrade to null; fields that cannot be null make
- * the whole extraction invalid.
+ * a `status` or a volunteered reply the model invents never reaches the
+ * response. Fields that are nullable in the contract degrade to null; fields
+ * that cannot be null make the whole extraction invalid.
  */
 const modelExtractionSchema = z.object({
   name: requiredText,
@@ -178,52 +173,33 @@ const modelExtractionSchema = z.object({
   interest: z.enum(INTERESTS),
   kind: z.enum(KINDS),
   summary: summaryText,
-  suggested_reply: nullableText,
-  reply_language: z.enum(REPLY_LANGUAGES),
   needs_attention: attentionField,
 });
+
+function validationIssues(error: z.ZodError): ExtractionValidationError {
+  return new ExtractionValidationError(
+    error.issues.map((issue) => {
+      const field = issue.path.join('.');
+      return field ? `${field}: ${issue.message}` : issue.message;
+    }),
+  );
+}
 
 /**
  * Validate one model answer against the extraction contract.
  *
- * Guard order matters:
- * 1. Shape validation (invalid nullable values become null, no status escapes).
- * 2. A reply with a non-allowlisted placeholder is voided entirely.
- * 3. A Bengali-script message must be answered in Bengali script; otherwise the
- *    reply is voided rather than sending English to a Bangla customer.
+ * Shape validation is the whole job here: invalid nullable values become null,
+ * a status never escapes, and any reply the model volunteers is stripped. Reply
+ * text is generated by the separate `/api/reply` flow.
  */
-export function validateExtraction(raw: unknown, rawMessage: string): ExtractionResult {
+export function validateExtraction(raw: unknown): ExtractionResult {
   const parsed = modelExtractionSchema.safeParse(raw);
 
   if (!parsed.success) {
-    throw new ExtractionValidationError(
-      parsed.error.issues.map((issue) => {
-        const field = issue.path.join('.');
-        return field ? `${field}: ${issue.message}` : issue.message;
-      }),
-    );
+    throw validationIssues(parsed.error);
   }
 
   const data = parsed.data;
-  let suggestedReply = data.suggested_reply;
-
-  if (suggestedReply !== null) {
-    try {
-      assertPlaceholdersAllowed(suggestedReply);
-    } catch (error) {
-      if (!(error instanceof PlaceholderNotAllowedError)) throw error;
-      suggestedReply = null;
-    }
-  }
-
-  if (hasBengaliScript(rawMessage)) {
-    const replyIsBengali =
-      suggestedReply !== null && hasBengaliScript(suggestedReply);
-
-    if (data.reply_language !== 'bn' || !replyIsBengali) {
-      suggestedReply = null;
-    }
-  }
 
   return {
     name: data.name,
@@ -235,8 +211,46 @@ export function validateExtraction(raw: unknown, rawMessage: string): Extraction
     interest: data.interest,
     kind: data.kind,
     summary: data.summary,
-    suggested_reply: suggestedReply,
-    reply_language: data.reply_language,
     needs_attention: data.needs_attention,
   };
+}
+
+/**
+ * The reply-only model answer. Nothing but the text is accepted, so a reply
+ * request cannot quietly create or overwrite a status, name or phone number.
+ * The reply language is chosen inside the prompt and is never stored or
+ * returned.
+ */
+const modelReplySchema = z.object({
+  reply: nullableText,
+});
+
+/**
+ * A weak model occasionally answers with the extraction field name
+ * (`suggested_reply`) even when the prompt asks for `reply`. Reading that alias
+ * costs nothing and prevents a non-null answer from being reported as "no
+ * reply"; the contract still strips everything else.
+ */
+function normalizeReplyAnswer(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return raw;
+  }
+
+  const record = raw as Record<string, unknown>;
+
+  if (!('reply' in record) && 'suggested_reply' in record) {
+    return { reply: record.suggested_reply };
+  }
+
+  return raw;
+}
+
+export function validateReplyDraft(raw: unknown): ReplyDraft {
+  const parsed = modelReplySchema.safeParse(normalizeReplyAnswer(raw));
+
+  if (!parsed.success) {
+    throw validationIssues(parsed.error);
+  }
+
+  return parsed.data;
 }

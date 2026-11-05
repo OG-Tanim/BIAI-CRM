@@ -49,9 +49,7 @@ export function createExtractHandler(extractor: AiExtractor) {
     }
 
     try {
-      // The raw message is passed in because the Bengali-script guard is about
-      // the message, not about what the model claims to have read.
-      return NextResponse.json(validateExtraction(raw, message), { status: 200 });
+      return NextResponse.json(validateExtraction(raw), { status: 200 });
     } catch (error) {
       if (!(error instanceof ExtractionValidationError)) throw error;
 

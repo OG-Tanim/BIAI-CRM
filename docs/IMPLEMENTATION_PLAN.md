@@ -2,6 +2,7 @@
 
 > **Status (2026-11-04):** all seven sessions are complete and the ticket files have been
 > retired. This plan is kept as implementation history, not as pending work.
+> **S8 (2026-11-05):** added the on-demand reply path (`POST /api/reply`, `ReplyWriter`, `validateReplyDraft`).
 
 **Purpose.** Build `docs/SPEC.md` across several sessions, each starting with no memory of the conversation that produced it. The spec is the authority; this file is the order of work and the handoff contract.
 
@@ -103,7 +104,7 @@ S4 and S5 both need S3 and are independent of each other. Everything else is a h
 - `#3` → `company: "Gazipur textile company"`, `job_title: "Managing Director"`, `name: "Mahmud Hasan"`.
 - `#18` → `company: "small garment factory"`, `job_title: "owner"`.
 - `#11` → `kind: spam`.
-- `#2` → reply contains Bengali characters and `reply_language: "bn"`.
+- `#2` → reply contains Bengali characters.
 - A Bengali-script message answered in English yields `suggested_reply: null`.
 - An invented token such as `{{cohort_two}}` nulls the reply.
 - No row is written by any of the above.
@@ -234,28 +235,28 @@ If a story has no home here, or a card builds something unlisted, stop and recon
 
 Frozen for the eval harness. Judgement calls are marked — settle them once in S5, then never change them to make the model look good.
 
-| Row | kind | interest | language | Note |
-|---|---|---|---|---|
-| 1 | sales_lead | bootcamp | banglish | |
-| 2 | sales_lead | fellowship | bn | no phone |
-| 3 | sales_lead | corporate | en | company + job_title |
-| 4 | sales_lead | bootcamp | banglish | |
-| 5 | sales_lead | unclear | en | staff note, judgement call |
-| 6 | sales_lead | unclear | banglish | no phone |
-| 7 | support | unclear | bn | never Paid |
-| 8 | sales_lead | unclear | en | refund question |
-| 9 | sales_lead | bootcamp | banglish | |
-| 10 | sales_lead | corporate | en | company + job_title |
-| 11 | spam | unclear | en | never on the board |
-| 12 | sales_lead | bootcamp | banglish | duplicate of #1 |
-| 13 | sales_lead | fellowship | bn | |
-| 14 | sales_lead | fellowship | en | |
-| 15 | sales_lead | bootcamp | banglish | |
-| 16 | support | unclear | en | needs_attention |
-| 17 | sales_lead | unclear | banglish | no phone |
-| 18 | sales_lead | corporate | bn | company + job_title |
-| 19 | sales_lead | fellowship | en | |
-| 20 | job_seeker | unclear | en | not lost |
+| Row | kind | interest | Note |
+|---|---|---|---|
+| 1 | sales_lead | bootcamp | |
+| 2 | sales_lead | fellowship | no phone |
+| 3 | sales_lead | corporate | company + job_title |
+| 4 | sales_lead | bootcamp | |
+| 5 | sales_lead | unclear | staff note, judgement call |
+| 6 | sales_lead | unclear | no phone |
+| 7 | support | unclear | never Paid |
+| 8 | sales_lead | unclear | refund question |
+| 9 | sales_lead | bootcamp | |
+| 10 | sales_lead | corporate | company + job_title |
+| 11 | spam | unclear | never on the board |
+| 12 | sales_lead | bootcamp | duplicate of #1 |
+| 13 | sales_lead | fellowship | |
+| 14 | sales_lead | fellowship | |
+| 15 | sales_lead | bootcamp | |
+| 16 | support | unclear | needs_attention |
+| 17 | sales_lead | unclear | no phone |
+| 18 | sales_lead | corporate | company + job_title |
+| 19 | sales_lead | fellowship | |
+| 20 | job_seeker | unclear | not lost |
 
 ---
 

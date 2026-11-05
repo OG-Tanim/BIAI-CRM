@@ -31,6 +31,42 @@ Newest first. One entry per session, in this shape:
 - Next:
 ```
 
+### S9 — Remove stored reply language — 2026-11-05
+
+- Done: removed `reply_language` from the schema, DTO, save/reply contracts, capture form, detail
+  badge, seed fixtures and mock fixtures. The reply prompt still matches the sender's language
+  internally, but the model now returns only `{ "reply": string }` and no language value is
+  returned, stored or displayed.
+- Verified: `pnpm typecheck`, `pnpm test` (185 passed) and `pnpm build` clean; `db:push` applied the
+  constraint/column drop to both the testing and production branches. The test branch keeps all 21
+  enquiries with their other fields intact; production remains empty.
+- Not done: nothing outstanding.
+- Traps hit: the old 422 test depended on an invalid language enum; with a reply-only contract it
+  now sends a non-object model answer instead.
+- Next: none.
+
+### S8 — On-demand reply — 2026-11-05
+
+- Done: capture and enquiry detail now each expose one editable reply box instead of a template and a
+  filled copy. A new `POST /api/reply` (`ReplyWriter`, `validateReplyDraft`) drafts only the reply
+  text. **Generate reply** prompts when the message box is empty and otherwise leaves every
+  other field alone; **Read message** still fills the reply as part of a full extraction. The single
+  reply is stored in both `suggested_reply` and `reply_filled` so older readers cannot disagree with
+  it. Copy is available from the box and asks for confirmation while placeholders survive. A null
+  reply now carries a `reason` (`placeholder`, `language`, or null when the model chose no reply), so
+  the warning names the real cause; the prompt also restricts null to spam and accepts the
+  `suggested_reply` field-name alias from a confused model.
+- Verified: `pnpm typecheck` clean; `pnpm test` 216 passed. The rendered capture and detail pages show
+  one reply box, no template/filled fields, and the Generate, Copy and Save controls.
+- Not done: no browser interaction test, per request.
+- Traps hit: the single box is written to both `suggested_reply` and `reply_filled`, because older
+  panels and rows read the second column; showing either column alone would let the two disagree.
+  The detail panel starts from `reply_filled ?? suggested_reply` so an older finished reply is not
+  hidden behind its template. The local model returned null for genuine complaints and wrote
+  Banglish for a Bengali-script message until the reply prompt restricted null to spam and forced
+  Bengali script when any Bengali character is present.
+- Next: none; handover.
+
 ### S7 — Review fixes — 2026-11-04
 
 - Done: a `/code-review` pass since the empty tree reported 16 findings; all are fixed. Standards:
@@ -120,8 +156,8 @@ Newest first. One entry per session, in this shape:
   `stuck`/`leads_by_status` counts. The seed verifies those three views after writing and exits
   non-zero if any count is wrong; a non-empty branch needs `--reset`. `scripts/eval.ts`
   (`pnpm eval`) runs all twenty samples through the configured `AiExtractor` and
-  `validateExtraction`, diffs kind/interest/reply_language plus name/phone/channel/company/role/
-  attention and reply presence/language against the frozen expectation, prints one PASS/FAIL line
+  `validateExtraction`, diffs kind/interest plus name/phone/channel/company/role/attention and
+  reply presence against the frozen expectation, prints one PASS/FAIL line
   per row with mismatch details, and exits 1 on any mismatch. Mock fixtures now cover all twenty
   samples (lookup strips the eval's sender header); #7, #8 and #17's interest was corrected to
   `unclear` against the frozen table. The route test harnesses clear the table inside their

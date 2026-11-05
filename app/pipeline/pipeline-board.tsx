@@ -32,6 +32,48 @@ export function PipelineBoard({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // A capture screen can save an enquiry as Contacted after this board's
+  // payload was rendered or prefetched. Re-read the stored rows on mount and
+  // whenever the tab returns, so the card never sits in a stale column.
+  useEffect(() => {
+    let active = true;
+    let inFlight = false;
+
+    async function syncLatest() {
+      if (inFlight) return;
+      inFlight = true;
+
+      try {
+        const response = await fetch('/api/pipeline', { cache: 'no-store' });
+        if (!response.ok) return;
+
+        const latest = (await response.json()) as PipelineResponse;
+        if (active) setPipeline(latest);
+      } catch {
+        // Keep the server-rendered board. A background sync has no action to
+        // retry, and a transient failure must not replace the columns.
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    void syncLatest();
+
+    const onFocus = () => void syncLatest();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void syncLatest();
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      active = false;
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
   async function updateCard(id: string, body: UpdateBody): UpdateResult {
     setBusyId(id);
     setError(null);

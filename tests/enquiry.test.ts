@@ -32,7 +32,6 @@ function reviewed(overrides: Record<string, unknown> = {}): Record<string, unkno
     suggested_reply:
       'Hi Nowshin! Our certificate is {{certificate}}. Let us know if you have questions.',
     reply_filled: null,
-    reply_language: 'banglish',
     needs_attention: false,
     ...overrides,
   };
@@ -45,6 +44,27 @@ describe('prepareEnquiry', () => {
     const values = prepareEnquiry(reviewed({ status: 'paid' }), RAW_MESSAGE);
 
     expect(values.status).toBe('new');
+  });
+
+  it('moves to Contacted and stamps first contact only when the flag is set', () => {
+    const now = new Date('2026-01-02T03:04:05Z');
+    const values = prepareEnquiry(
+      reviewed({ contacted: true }),
+      RAW_MESSAGE,
+      now,
+    );
+
+    expect(values.status).toBe('contacted');
+    expect(values.lastContactedAt).toBe(now);
+  });
+
+  it('refuses the contacted flag when the reply is empty', () => {
+    expect(() =>
+      prepareEnquiry(
+        reviewed({ contacted: true, suggested_reply: '', reply_filled: null }),
+        RAW_MESSAGE,
+      ),
+    ).toThrow(EnquiryValidationError);
   });
 
   it('keeps the original message byte for byte', () => {
@@ -147,12 +167,20 @@ describe('prepareEnquiry', () => {
       { channel: 'carrier_pigeon' },
       { interest: 'free_money' },
       { kind: 'friend' },
-      { reply_language: 'fr' },
     ]) {
       expect(() => prepareEnquiry(reviewed(overrides), RAW_MESSAGE)).toThrow(
         EnquiryValidationError,
       );
     }
+  });
+
+  it('ignores a reply_language a stale client may still send', () => {
+    const values = prepareEnquiry(
+      reviewed({ reply_language: 'fr' }),
+      RAW_MESSAGE,
+    );
+
+    expect(values).not.toHaveProperty('replyLanguage');
   });
 
   it('rejects a save with no original message', () => {

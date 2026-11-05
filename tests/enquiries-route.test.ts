@@ -61,7 +61,6 @@ function reviewed(overrides: Record<string, unknown> = {}): Record<string, unkno
     summary: 'Asks whether the course certificate is government approved.',
     suggested_reply: 'Hi Nowshin! Our certificate is {{certificate}}.',
     reply_filled: 'Hi Nowshin! Our certificate is government approved.',
-    reply_language: 'banglish',
     needs_attention: false,
     raw_message: RAW_MESSAGE,
     ...overrides,
@@ -113,6 +112,33 @@ describe('POST /api/enquiries', () => {
       const stored = await rows();
       expect(stored[0]!.status).toBe('new');
       expect(stored[0]!.lastContactedAt).toBeNull();
+    });
+  });
+
+  it('saves as Contacted when the operator contact flag is set', async () => {
+    await scenario(async ({ save, rows }) => {
+      const { response, body } = await save(reviewed({ contacted: true }));
+
+      expect(response.status).toBe(201);
+
+      const saved = body.enquiry as Record<string, unknown>;
+      expect(saved.status).toBe('contacted');
+      expect(saved.last_contacted_at).not.toBeNull();
+
+      const stored = await rows();
+      expect(stored[0]!.status).toBe('contacted');
+      expect(stored[0]!.lastContactedAt).not.toBeNull();
+    });
+  });
+
+  it('refuses Contacted when the reply is empty', async () => {
+    await scenario(async ({ save, rows }) => {
+      const { response } = await save(
+        reviewed({ contacted: true, suggested_reply: '', reply_filled: null }),
+      );
+
+      expect(response.status).toBe(422);
+      expect(await rows()).toHaveLength(0);
     });
   });
 

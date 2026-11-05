@@ -1,5 +1,3 @@
-import { hasBengaliScript } from '@/lib/domain/extraction';
-
 /**
  * Canned model answers, used only when `MOCK_AI=1`.
  *
@@ -23,7 +21,6 @@ const FIXTURES: Record<string, unknown> = {
     summary: 'Asks the bootcamp fee and how to pay.',
     suggested_reply:
       'Walaikum assalam, Rafi! Bootcamp er fee {{price}}, ar payment er jonno {{payment_method}} use korte parben. Apnar kono proshno thakle janaben.',
-    reply_language: 'banglish',
     needs_attention: false,
   },
 
@@ -39,7 +36,6 @@ const FIXTURES: Record<string, unknown> = {
     summary: 'Wants to join the fellowship and asks when it starts.',
     suggested_reply:
       'আসসালামু আলাইকুম, তাহমিনা! ফেলোশিপ প্রোগ্রাম শুরু হবে {{start_date}}-এ। আপনার আরও কিছু জানার থাকলে জানাবেন।',
-    reply_language: 'bn',
     needs_attention: false,
   },
 
@@ -55,7 +51,6 @@ const FIXTURES: Record<string, unknown> = {
     summary: 'A Gazipur textile company wants AI training for its 40-person team.',
     suggested_reply:
       'Hello Mahmud, thank you for reaching out. We can arrange AI training for your team and would like to understand your goals. Could you share a good time for a call this week?',
-    reply_language: 'en',
     needs_attention: false,
   },
 
@@ -71,7 +66,6 @@ const FIXTURES: Record<string, unknown> = {
     summary: 'Asks whether classes are live or recorded.',
     suggested_reply:
       'Vai, class gula {{schedule}} hoy. Apnar proshno gulor detail janate amra shiggiri jogajog korbo.',
-    reply_language: 'banglish',
     needs_attention: false,
   },
 
@@ -87,7 +81,6 @@ const FIXTURES: Record<string, unknown> = {
     summary: 'Says she paid via bKash on the 25th and received no confirmation.',
     suggested_reply:
       'ফারজানা আপু, আপনার পেমেন্টের বিষয়টি আমরা যাচাই করছি। দ্রুতই কনফার্মেশন জানাবো।',
-    reply_language: 'bn',
     needs_attention: true,
   },
 
@@ -103,7 +96,6 @@ const FIXTURES: Record<string, unknown> = {
     summary: 'Asks about the refund policy if she cannot attend.',
     suggested_reply:
       'Hi Anika, thanks for asking. Our refund terms are {{refund_policy}}. We would be happy to walk you through them before you decide.',
-    reply_language: 'en',
     needs_attention: false,
   },
 
@@ -118,7 +110,6 @@ const FIXTURES: Record<string, unknown> = {
     kind: 'spam',
     summary: 'Promotional crypto spam with a shortened link.',
     suggested_reply: null,
-    reply_language: 'en',
     needs_attention: false,
   },
 
@@ -134,7 +125,6 @@ const FIXTURES: Record<string, unknown> = {
     summary: 'Asks whether the course certificate is government approved.',
     suggested_reply:
       'Hi Nowshin! Our certificate is {{certificate}}. Let us know if you have any other questions.',
-    reply_language: 'banglish',
     needs_attention: false,
   },
 
@@ -150,7 +140,6 @@ const FIXTURES: Record<string, unknown> = {
     summary: 'Looking for an AI intern role and asking where to apply.',
     suggested_reply:
       'Hi Arif, thanks for your interest. We will share the application process with you shortly.',
-    reply_language: 'en',
     needs_attention: false,
   },
 
@@ -167,7 +156,6 @@ const FIXTURES: Record<string, unknown> = {
       'Called about a student discount and will call back tomorrow after 5 PM.',
     suggested_reply:
       'Hi Nasreen, thanks for calling about the student discount. We will be ready for your call tomorrow after 5 PM.',
-    reply_language: 'en',
     needs_attention: false,
   },
 
@@ -183,7 +171,6 @@ const FIXTURES: Record<string, unknown> = {
     summary: 'Asks whether the course leads to a job.',
     suggested_reply:
       'Vai, ei course ta job er jonno skills prepare korte sahajjo kore. Apnar proshno gulor detail amra shiggiri janabo.',
-    reply_language: 'banglish',
     needs_attention: false,
   },
 
@@ -199,7 +186,6 @@ const FIXTURES: Record<string, unknown> = {
     summary: 'Asks where the offline class will be held, mentioning Mirpur.',
     suggested_reply:
       'Vai, offline class er location {{location}}. Exact venue amra shiggiri janabo.',
-    reply_language: 'banglish',
     needs_attention: false,
   },
 
@@ -215,7 +201,6 @@ const FIXTURES: Record<string, unknown> = {
     summary: 'A bank in Motijheel needs a quote for training 120 employees.',
     suggested_reply:
       'Hello Kamrul, thank you for reaching out. We can arrange training for your 120 employees, online or onsite. Could you share a good time to discuss the quote?',
-    reply_language: 'en',
     needs_attention: false,
   },
 
@@ -231,7 +216,6 @@ const FIXTURES: Record<string, unknown> = {
     summary: 'Follows up asking for the bootcamp price.',
     suggested_reply:
       'Rafi, bootcamp er fee {{price}}. Payment er jonno {{payment_method}} use korte parben.',
-    reply_language: 'banglish',
     needs_attention: false,
   },
 
@@ -247,7 +231,6 @@ const FIXTURES: Record<string, unknown> = {
     summary: 'A class 9 student asks to join the free masterclass.',
     suggested_reply:
       'মিম, তুমি ফ্রি মাস্টারক্লাসে জয়েন করতে পারবে। কীভাবে জয়েন করবে আমরা শীঘ্রই জানাবো।',
-    reply_language: 'bn',
     needs_attention: false,
   },
 
@@ -264,7 +247,6 @@ const FIXTURES: Record<string, unknown> = {
       'A non-technical marketing manager asks if the fellowship suits her.',
     suggested_reply:
       'Hi Shirin, yes — the fellowship is designed to welcome people from non-technical backgrounds. We would be glad to talk through how it fits your experience.',
-    reply_language: 'en',
     needs_attention: false,
   },
 
@@ -280,7 +262,6 @@ const FIXTURES: Record<string, unknown> = {
     summary: 'Asks what the add-on is and what lifetime access means.',
     suggested_reply:
       'Tanvir, add-on ar lifetime access er detail amra shiggiri janabo.',
-    reply_language: 'banglish',
     needs_attention: false,
   },
 
@@ -297,7 +278,6 @@ const FIXTURES: Record<string, unknown> = {
       'Wants to cancel and get a refund, threatening to post publicly.',
     suggested_reply:
       'Hello Habibur, I am sorry to hear this. We are looking into your cancellation and refund today and will contact you as soon as it is resolved.',
-    reply_language: 'en',
     needs_attention: true,
   },
 
@@ -314,7 +294,6 @@ const FIXTURES: Record<string, unknown> = {
       'Owner of a small garment factory asks about a group discount for 15 staff.',
     suggested_reply:
       'রেজাউল করিম, আপনার কোম্পানির ১৫ জন কর্মীর জন্য গ্রুপ ডিসকাউন্টের বিষয়টি আমরা জানিয়ে দেবো। {{discount}} সম্পর্কে বিস্তারিত শীঘ্রই জানাবো।',
-    reply_language: 'bn',
     needs_attention: false,
   },
 
@@ -331,7 +310,6 @@ const FIXTURES: Record<string, unknown> = {
       'Asks whether the fellowship fee can be paid in two instalments.',
     suggested_reply:
       'Hi Samira, yes — the fellowship can be paid in instalments. The exact plan is {{instalments}}, and we can walk you through it.',
-    reply_language: 'en',
     needs_attention: false,
   },
 };
@@ -370,7 +348,6 @@ export function mockFixtureFor(message: string): unknown | undefined {
  * drafting flow still works while mock mode is on.
  */
 function fallbackExtraction(message: string): unknown {
-  const bangla = hasBengaliScript(message);
   const summary = message.replace(/\s+/g, ' ').trim().slice(0, 140);
 
   return {
@@ -383,10 +360,8 @@ function fallbackExtraction(message: string): unknown {
     interest: 'unclear',
     kind: 'unclear',
     summary: summary || 'No message text.',
-    suggested_reply: bangla
-      ? 'আপনার বার্তার জন্য ধন্যবাদ। আমরা শীঘ্রই আপনার সঙ্গে যোগাযোগ করব।'
-      : 'Thanks for your message. We will get back to you shortly.',
-    reply_language: bangla ? 'bn' : 'en',
+    suggested_reply:
+      'Thanks for your message. We will get back to you shortly.',
     needs_attention: false,
   };
 }

@@ -110,7 +110,6 @@ async function scenario(run: (app: App) => Promise<void>): Promise<void> {
             summary: '',
             rawMessage: 'Seeded message',
             suggestedReply: '',
-            replyLanguage: 'en',
             ...overrides,
           })
           .returning();

@@ -3,7 +3,6 @@ import type {
   Channel,
   Interest,
   Kind,
-  ReplyLanguage,
   Status,
 } from '@/lib/domain/enquiry';
 
@@ -30,7 +29,6 @@ export type EnquiryDto = {
   raw_message: string;
   suggested_reply: string;
   reply_filled: string | null;
-  reply_language: ReplyLanguage;
   created_at: string;
   last_contacted_at: string | null;
   updated_at: string;
@@ -58,7 +56,6 @@ export function toEnquiryDto(row: Enquiry): EnquiryDto {
     raw_message: row.rawMessage,
     suggested_reply: row.suggestedReply,
     reply_filled: row.replyFilled,
-    reply_language: row.replyLanguage as ReplyLanguage,
     created_at: row.createdAt.toISOString(),
     last_contacted_at: row.lastContactedAt?.toISOString() ?? null,
     updated_at: row.updatedAt.toISOString(),

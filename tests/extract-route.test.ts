@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createExtractHandler } from '@/lib/api/extract';
 import { AiUnavailableError, type AiExtractor } from '@/lib/ai/extractor';
 import { mockFixtureFor } from '@/lib/ai/mock-fixtures';
-import { hasBengaliScript, hasUnfilledPlaceholder } from '@/lib/domain/extraction';
 
 /**
  * Seam 2: the HTTP route, with the AI port replaced by a fake. No database is
@@ -12,9 +11,6 @@ const BANGLISH_17 = 'Apnader course certificate ta ki govt approved?';
 const BANGLA_2 = 'ফেলোশিপ প্রোগ্রামে ভর্তি হতে চাই। কবে শুরু হবে?';
 const CORPORATE_3 =
   'I run a 40-person textile company in Gazipur. We want AI training for our team. Can someone call me this week?';
-const PRICE_1 =
-  'Assalamualaikum, apnader 3 day bootcamp er price koto? Payment kibhabe korbo?';
-const REFUND_8 = 'Do you offer refunds if I cannot attend after paying?';
 
 const CONTRACT_KEYS = [
   'channel',
@@ -26,8 +22,6 @@ const CONTRACT_KEYS = [
   'name',
   'needs_attention',
   'phone',
-  'reply_language',
-  'suggested_reply',
   'summary',
 ];
 
@@ -70,19 +64,19 @@ afterEach(() => {
 });
 
 describe('POST /api/extract', () => {
-  it('returns a complete prefilled proposal and no status', async () => {
+  it('returns a complete prefilled proposal, no status and no reply', async () => {
     const response = await extract(BANGLISH_17);
     const body = (await response.json()) as Record<string, unknown>;
 
     expect(response.status).toBe(200);
     expect(Object.keys(body).sort()).toEqual(CONTRACT_KEYS);
     expect(body).not.toHaveProperty('status');
+    expect(body).not.toHaveProperty('suggested_reply');
     expect(body).toMatchObject({
       name: 'Nowshin',
       channel: 'facebook',
       interest: 'unclear',
       kind: 'sales_lead',
-      reply_language: 'banglish',
     });
   });
 
@@ -106,65 +100,12 @@ describe('POST /api/extract', () => {
     expect(body.phone).toBeNull();
   });
 
-  it('answers a Bangla-script message in Bengali script', async () => {
+  it('strips a reply the model volunteers', async () => {
     const response = await extract(BANGLA_2);
     const body = (await response.json()) as Record<string, unknown>;
 
-    expect(body.reply_language).toBe('bn');
-    expect(hasBengaliScript(body.suggested_reply as string)).toBe(true);
-  });
-
-  it('voids a reply that contradicts the Bangla-script guard', async () => {
-    const answer = {
-      ...fixture(BANGLA_2),
-      reply_language: 'en',
-      suggested_reply: 'Thanks for your message. We will get back to you soon.',
-    };
-
-    const response = await extract(BANGLA_2, fakeExtractor(answer));
-    const body = (await response.json()) as Record<string, unknown>;
-
     expect(response.status).toBe(200);
-    expect(body.suggested_reply).toBeNull();
-  });
-
-  it('voids a reply carrying a placeholder outside the allowlist', async () => {
-    const answer = {
-      ...fixture(BANGLISH_17),
-      suggested_reply: 'The next cohort starts {{cohort_two}}.',
-    };
-
-    const response = await extract(BANGLISH_17, fakeExtractor(answer));
-    const body = (await response.json()) as Record<string, unknown>;
-
-    expect(response.status).toBe(200);
-    expect(body.suggested_reply).toBeNull();
-  });
-
-  it('uses placeholders instead of asserting facts it does not know', async () => {
-    for (const [message, token] of [
-      [PRICE_1, '{{price}}'],
-      [REFUND_8, '{{refund_policy}}'],
-      [BANGLISH_17, '{{certificate}}'],
-    ] as const) {
-      const response = await extract(message);
-      const body = (await response.json()) as {
-        suggested_reply: string | null;
-      };
-
-      expect(response.status).toBe(200);
-      expect(body.suggested_reply).toContain(token);
-      expect(hasUnfilledPlaceholder(body.suggested_reply)).toBe(true);
-    }
-  });
-
-  it('never writes a numeric price into the price reply', async () => {
-    const response = await extract(PRICE_1);
-    const body = (await response.json()) as { suggested_reply: string };
-
-    expect(body.suggested_reply).toContain('{{price}}');
-    expect(body.suggested_reply).toContain('{{payment_method}}');
-    expect(body.suggested_reply).not.toMatch(/\d/);
+    expect(body).not.toHaveProperty('suggested_reply');
   });
 
   it('extracts with no database configured at all', async () => {

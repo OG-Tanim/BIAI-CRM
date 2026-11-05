@@ -5,8 +5,9 @@ import { AiResponseError, AiUnavailableError } from '@/lib/ai/errors';
  *
  * Extraction and the weekly narration differ only in prompt, token budget and
  * whether the answer must be JSON. Everything else — the endpoint, the
- * headers, the timeout, the response envelope, and the single retry the spec
- * promises on 429/5xx — lives here so a provider change is made once.
+ * headers, the timeout, the thinking switch, the response envelope, and the
+ * single retry the spec promises on 429/5xx — lives here so a provider change
+ * is made once.
  */
 
 export type ChatMessage = {
@@ -41,8 +42,46 @@ const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
 const DEFAULT_TIMEOUT_MS = 45_000;
 const DEFAULT_RETRY_DELAY_MS = 750;
 
+/**
+ * How long one attempt may run, configured once for every AI call.
+ *
+ * The ceiling that suits a hosted free model is not the ceiling that suits a
+ * reasoning model on a laptop, so `OPENROUTER_TIMEOUT_MS` is a setting rather
+ * than three constants that drift apart. A set-but-unusable value falls back
+ * to the default instead of failing every request: the timeout is a safety
+ * net, and a typo in it must not take the AI down by itself.
+ */
+export function resolveTimeoutMs(
+  env: Record<string, string | undefined> = process.env,
+  fallbackMs: number = DEFAULT_TIMEOUT_MS,
+): number {
+  const raw = env.OPENROUTER_TIMEOUT_MS?.trim();
+  if (!raw) return fallbackMs;
+
+  const ms = Number(raw);
+  return Number.isFinite(ms) && ms >= 1 ? Math.floor(ms) : fallbackMs;
+}
+
+/**
+ * Reasoning models (Qwen3 and its relatives) think before they answer, which
+ * spends `max_tokens` and seconds on a phase nobody reads, and leaves
+ * `content: null` when the budget runs out mid-thought.
+ *
+ * `enable_thinking` is a chat-template flag, not an OpenAI field: vLLM and the
+ * local MLX server read it from `chat_template_kwargs`, and a top-level
+ * `enable_thinking` is silently ignored (measured against the local MLX
+ * server). Every call turns it off through this one object.
+ */
+const THINKING_OFF = {
+  chat_template_kwargs: { enable_thinking: false },
+} as const;
+
 type ChatCompletionResponse = {
-  choices?: Array<{ message?: { content?: unknown } }>;
+  choices?: Array<{
+    message?: { content?: unknown };
+    finish_reason?: unknown;
+  }>;
+  usage?: { completion_tokens_details?: { reasoning_tokens?: unknown } };
 };
 
 /**
@@ -51,6 +90,37 @@ type ChatCompletionResponse = {
  */
 function isRetryable(status: number): boolean {
   return status === 429 || status >= 500;
+}
+
+function asCount(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * A 200 with no prose is two different failures, and they need different
+ * fixes. A reasoning model spends `max_tokens` on its thinking tokens first;
+ * when the budget was sized for the answer alone, it is cut off mid-thought
+ * and returns `content: null` with `finish_reason: "length"`. Reporting that
+ * as "no message content" sent the operator looking at the prompt instead of
+ * the budget, so say which one happened.
+ */
+function emptyContentError(
+  finishReason: unknown,
+  reasoningTokens: number | null,
+  maxTokens: number,
+): AiResponseError {
+  if (finishReason !== 'length') {
+    return new AiResponseError('AI provider returned no message content.');
+  }
+
+  const spent =
+    reasoningTokens === null
+      ? ''
+      : ` (${reasoningTokens} of them reasoning tokens)`;
+
+  return new AiResponseError(
+    `AI model ran out of tokens before writing an answer: the ${maxTokens}-token budget was consumed${spent}. Raise max_tokens or use a model without a reasoning phase.`,
+  );
 }
 
 export function createOpenRouterClient(
@@ -85,6 +155,7 @@ export function createOpenRouterClient(
           ...(request.jsonMode
             ? { response_format: { type: 'json_object' } }
             : {}),
+          ...THINKING_OFF,
           messages: request.messages,
         }),
         signal: AbortSignal.timeout(timeoutMs),
@@ -123,12 +194,22 @@ export function createOpenRouterClient(
         throw new AiResponseError('AI provider returned a non-JSON response.');
       }
 
-      const content = payload.choices?.[0]?.message?.content;
-      if (typeof content !== 'string' || content.trim() === '') {
-        throw new AiResponseError('AI provider returned no message content.');
+      const choice = payload.choices?.[0];
+      const finishReason = choice?.finish_reason;
+      const reasoningTokens = asCount(
+        payload.usage?.completion_tokens_details?.reasoning_tokens,
+      );
+
+      const content = choice?.message?.content;
+      if (typeof content === 'string' && content.trim() !== '') {
+        return content;
       }
 
-      return content;
+      throw emptyContentError(
+        finishReason,
+        reasoningTokens,
+        request.maxTokens,
+      );
     },
   };
 }

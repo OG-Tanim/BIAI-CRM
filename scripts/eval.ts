@@ -1,7 +1,6 @@
 import { createExtractorFromEnv } from '@/lib/ai/extractor';
 import {
   ExtractionValidationError,
-  hasBengaliScript,
   validateExtraction,
   type ExtractionResult,
 } from '@/lib/domain/extraction';
@@ -99,11 +98,6 @@ function compare(
   mismatches.push(
     ...textMismatch('kind', result.kind, expectation.kind),
     ...textMismatch('interest', result.interest, expectation.interest),
-    ...textMismatch(
-      'reply_language',
-      result.reply_language,
-      expectation.replyLanguage,
-    ),
     ...textMismatch('name', result.name, expectation.name),
     ...textMismatch('phone', result.phone, sample.phone),
     ...textMismatch('channel', result.channel, sample.channel),
@@ -133,23 +127,6 @@ function compare(
     mismatches.push('summary: expected a one-line summary, got an empty string');
   }
 
-  if (expectation.reply === 'none') {
-    if (result.suggested_reply !== null) {
-      mismatches.push(
-        `suggested_reply: expected null, got ${preview(result.suggested_reply)}`,
-      );
-    }
-  } else if (result.suggested_reply === null || result.suggested_reply.trim() === '') {
-    mismatches.push('suggested_reply: expected a reply, got null');
-  } else if (
-    expectation.replyLanguage === 'bn' &&
-    !hasBengaliScript(result.suggested_reply)
-  ) {
-    mismatches.push(
-      'suggested_reply: a Bengali-script message must receive Bengali script',
-    );
-  }
-
   return mismatches;
 }
 
@@ -175,7 +152,7 @@ async function runRow(sample: SampleEnquiry): Promise<RowOutcome> {
   }
 
   try {
-    const result = validateExtraction(raw, input);
+    const result = validateExtraction(raw);
     return {
       sample,
       mismatches: compare(sample, expectation, raw, result),
@@ -199,7 +176,6 @@ function describe(sample: SampleEnquiry): string {
     String(sample.id).padStart(2, '0'),
     expectation.kind.padEnd(11),
     expectation.interest.padEnd(10),
-    expectation.replyLanguage.padEnd(8),
     expectation.name.padEnd(18),
   ].join('  ');
 }

@@ -3,14 +3,12 @@ import {
   CHANNELS,
   INTERESTS,
   KINDS,
-  REPLY_LANGUAGES,
   PlaceholderNotAllowedError,
   assertPlaceholdersAllowed,
   normalizePhone,
   type Channel,
   type Interest,
   type Kind,
-  type ReplyLanguage,
 } from '@/lib/domain/extraction';
 import {
   hasUnfilledPlaceholder,
@@ -25,27 +23,29 @@ export {
   CHANNELS,
   INTERESTS,
   KINDS,
-  REPLY_LANGUAGES,
   type Channel,
   type Interest,
   type Kind,
-  type ReplyLanguage,
 };
 
 /**
  * I/O-free capture decisions.
  *
  * The operator's reviewed form is trusted to be human, not trusted to be
- * right. This module decides what a save actually writes: status is always
- * `new`, the original message is never rewritten, and the reply template and
- * its filled counterpart stay two separate values.
+ * right. This module decides what a save actually writes: status is `new`
+ * unless the operator explicitly marks the enquiry as already contacted, the
+ * original message is never rewritten, and the reply template and its filled
+ * counterpart stay two separate values.
  */
 
 export const STATUSES = ['new', 'contacted', 'interested', 'paid', 'lost'] as const;
 export type Status = (typeof STATUSES)[number];
 
-/** The only status a save may produce. The operator changes it later, never the form. */
+/** The status a save produces unless the operator ticks the contacted flag. */
 export const NEW_STATUS = 'new' satisfies Status;
+
+/** The status a save produces when the operator confirms they contacted the person. */
+export const CONTACTED_STATUS = 'contacted' satisfies Status;
 
 /**
  * What a save writes. Deliberately not the database row type: the domain
@@ -60,13 +60,13 @@ export type NewEnquiryValues = {
   channelHandle: string | null;
   interest: Interest;
   kind: Kind;
-  status: 'new';
+  status: Status;
   needsAttention: boolean;
   summary: string;
   rawMessage: string;
   suggestedReply: string;
   replyFilled: string | null;
-  replyLanguage: ReplyLanguage;
+  lastContactedAt: Date | null;
 };
 
 export class EnquiryValidationError extends Error {
@@ -134,6 +134,12 @@ const attentionField = z.preprocess(
   z.boolean(),
 );
 
+/** True only when the operator says this enquiry was already contacted. */
+const contactedField = z.preprocess(
+  (value: unknown) => value === true,
+  z.boolean(),
+);
+
 /**
  * The reviewed form, in the same snake_case the extraction endpoint returns so
  * a proposal can be posted almost unchanged. Unknown keys — including a
@@ -151,8 +157,8 @@ const reviewedEnquirySchema = z.object({
   summary: plainText,
   suggested_reply: plainText,
   reply_filled: nullableText,
-  reply_language: z.enum(REPLY_LANGUAGES),
   needs_attention: attentionField,
+  contacted: contactedField,
 });
 
 export type ReviewedEnquiry = z.infer<typeof reviewedEnquirySchema>;
@@ -214,7 +220,11 @@ function resolveFilledReply(
  * re-derived: the original message is evidence, and the operator's edits to
  * the other fields must not touch it.
  */
-export function prepareEnquiry(input: unknown, rawMessage: string): NewEnquiryValues {
+export function prepareEnquiry(
+  input: unknown,
+  rawMessage: string,
+  now: Date = new Date(),
+): NewEnquiryValues {
   if (typeof rawMessage !== 'string' || rawMessage.trim() === '') {
     throw new EnquiryValidationError(['raw_message: An original message is required.']);
   }
@@ -231,6 +241,14 @@ export function prepareEnquiry(input: unknown, rawMessage: string): NewEnquiryVa
 
   const data = parsed.data;
 
+  // Claiming the person was contacted means a reply was actually sent. An
+  // empty reply box cannot back that claim, so the save is refused.
+  if (data.contacted && data.suggested_reply === '') {
+    throw new EnquiryValidationError([
+      'suggested_reply: A reply is required when marking the enquiry Contacted.',
+    ]);
+  }
+
   return {
     name: data.name,
     company: data.company,
@@ -240,14 +258,15 @@ export function prepareEnquiry(input: unknown, rawMessage: string): NewEnquiryVa
     channelHandle: data.channel_handle,
     interest: data.interest,
     kind: data.kind,
-    // A save is not a status change. Whatever the client sent is already gone.
-    status: NEW_STATUS,
+    // The form never sends a status. Only its explicit contacted flag moves
+    // the row off New, and that move stamps the first contact time.
+    status: data.contacted ? CONTACTED_STATUS : NEW_STATUS,
     needsAttention: data.needs_attention,
     summary: data.summary,
     rawMessage,
     suggestedReply: data.suggested_reply,
     replyFilled: resolveFilledReply(data.suggested_reply, data.reply_filled),
-    replyLanguage: data.reply_language,
+    lastContactedAt: data.contacted ? now : null,
   };
 }
 

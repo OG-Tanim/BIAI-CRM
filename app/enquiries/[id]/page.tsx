@@ -23,8 +23,8 @@ const BADGE =
  * One enquiry, in full.
  *
  * The list deliberately shows a row per person; this is where the evidence
- * lives: the message exactly as it arrived, the reply template and the filled
- * version, and every note attached while the card moved.
+ * lives: the message exactly as it arrived, the single editable reply, and
+ * every note attached while the card moved.
  */
 export default async function EnquiryDetailPage({ params }: { params: Params }) {
   const { id } = await params;

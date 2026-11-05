@@ -1,19 +1,14 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import type { EnquiryDto } from '@/lib/api/enquiry-dto';
+import Link from 'next/link';
 import type { DuplicateSummary, SaveEnquiryResponse } from '@/lib/api/enquiries';
 import type { AiMode } from '@/lib/ai/availability';
-import {
-  UnfilledPlaceholderError,
-  pendingPlaceholders,
-  replyToCopy,
-} from '@/lib/domain/enquiry';
+import { pendingPlaceholders } from '@/lib/domain/enquiry';
 import type {
   Channel,
   Interest,
   Kind,
-  ReplyLanguage,
 } from '@/lib/domain/extraction';
 import { formatDateTime } from '@/lib/format';
 import { messageFrom } from '@/lib/api/error-message';
@@ -41,12 +36,6 @@ const KIND_OPTIONS: Array<{ value: Kind; label: string }> = [
   { value: 'unclear', label: 'Unclear' },
 ];
 
-const LANGUAGE_OPTIONS: Array<{ value: ReplyLanguage; label: string }> = [
-  { value: 'en', label: 'English' },
-  { value: 'banglish', label: 'Banglish' },
-  { value: 'bn', label: 'বাংলা (Bengali)' },
-];
-
 type Draft = {
   name: string;
   company: string;
@@ -57,10 +46,9 @@ type Draft = {
   interest: Interest;
   kind: Kind;
   summary: string;
-  suggestedReply: string;
-  replyFilled: string;
-  replyLanguage: ReplyLanguage;
+  reply: string;
   needsAttention: boolean;
+  contacted: boolean;
 };
 
 type ExtractionPayload = {
@@ -73,12 +61,14 @@ type ExtractionPayload = {
   interest: Interest;
   kind: Kind;
   summary: string;
-  suggested_reply: string | null;
-  reply_language: ReplyLanguage;
   needs_attention: boolean;
 };
 
 type Notice = { kind: 'ok' | 'warn' | 'error'; text: string };
+
+type ReplyPayload = {
+  reply: string | null;
+};
 
 const EMPTY_DRAFT: Draft = {
   name: '',
@@ -90,13 +80,12 @@ const EMPTY_DRAFT: Draft = {
   interest: 'bootcamp',
   kind: 'sales_lead',
   summary: '',
-  suggestedReply: '',
-  replyFilled: '',
-  replyLanguage: 'en',
+  reply: '',
   needsAttention: false,
+  contacted: false,
 };
 
-function draftFromExtraction(payload: ExtractionPayload): Draft {
+function draftFromExtraction(payload: ExtractionPayload, current: Draft): Draft {
   return {
     name: payload.name,
     company: payload.company ?? '',
@@ -107,34 +96,61 @@ function draftFromExtraction(payload: ExtractionPayload): Draft {
     interest: payload.interest,
     kind: payload.kind,
     summary: payload.summary,
-    suggestedReply: payload.suggested_reply ?? '',
-    replyFilled: '',
-    replyLanguage: payload.reply_language,
+    // Read message is extraction only. Whatever is already in the reply box —
+    // typed by hand or drafted by Generate reply — survives an extraction.
+    reply: current.reply,
     needsAttention: payload.needs_attention,
+    // Whether the operator already contacted this person is their own claim,
+    // not something an extraction may reset.
+    contacted: current.contacted,
   };
+}
+
+const DRAFT_KEYS = Object.keys(EMPTY_DRAFT) as Array<keyof Draft>;
+
+/** True when the operator has changed any field away from its empty default. */
+function hasDraftInput(draft: Draft): boolean {
+  return DRAFT_KEYS.some((key) => draft[key] !== EMPTY_DRAFT[key]);
 }
 
 export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
   const [rawMessage, setRawMessage] = useState('');
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
+  // True only when the visible fields came from an extraction. Manual entry
+  // never sets it, so the original message stays editable without AI.
   const [hasProposal, setHasProposal] = useState(false);
-  // Manual entry is the same review form with no AI proposal behind it. The
-  // message stays editable because there is no extraction to preserve.
-  const [manual, setManual] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [writingReply, setWritingReply] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
+  const [replyNotice, setReplyNotice] = useState<Notice | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState<SaveEnquiryResponse | null>(null);
   const [copyNotice, setCopyNotice] = useState<Notice | null>(null);
   const saveInFlight = useRef(false);
+  const messageRef = useRef<HTMLTextAreaElement>(null);
   const canUseAi = aiMode !== 'unavailable';
+  const enteredDetails = hasDraftInput(draft);
+  const hasStarted = rawMessage.trim() !== '' || enteredDetails || hasProposal;
 
   function update<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
   async function extract() {
+    if (extracting || rawMessage.trim() === '') return;
+
+    // The AI proposal replaces the whole draft, so anything typed by hand
+    // would disappear without this explicit confirmation.
+    if (
+      enteredDetails &&
+      !window.confirm(
+        'Replace the details you have already entered with the AI proposal?',
+      )
+    ) {
+      return;
+    }
+
     setExtracting(true);
     setExtractError(null);
 
@@ -151,9 +167,12 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
         return;
       }
 
-      setDraft(draftFromExtraction(payload as ExtractionPayload));
-      setManual(false);
+      setDraft((current) =>
+        draftFromExtraction(payload as ExtractionPayload, current),
+      );
       setHasProposal(true);
+      setReplyNotice(null);
+      setCopyNotice(null);
     } catch {
       setExtractError('Could not reach the extraction service. Try again.');
     } finally {
@@ -166,6 +185,13 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
     // React state is not synchronous: two clicks in the same tick would both
     // get past a `saving` check and insert two rows.
     if (saveInFlight.current) return;
+    // A contact claim needs the reply that was actually sent.
+    if (draft.contacted && draft.reply.trim() === '') {
+      setSaveError(
+        'Add the reply you sent before marking this enquiry as contacted.',
+      );
+      return;
+    }
     saveInFlight.current = true;
     setSaving(true);
     setSaveError(null);
@@ -185,10 +211,12 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
           interest: draft.interest,
           kind: draft.kind,
           summary: draft.summary,
-          suggested_reply: draft.suggestedReply,
-          reply_filled: draft.replyFilled,
-          reply_language: draft.replyLanguage,
+          suggested_reply: draft.reply,
+          // The one reply box is mirrored into both stored reply columns, so
+          // the enquiry detail view and any older reader see the same text.
+          reply_filled: draft.reply.trim() === '' ? null : draft.reply,
           needs_attention: draft.needsAttention,
+          contacted: draft.contacted,
           raw_message: rawMessage,
         }),
       });
@@ -208,32 +236,39 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
     }
   }
 
-  async function copyReply(enquiry: EnquiryDto) {
-    try {
-      const text = replyToCopy({
-        suggestedReply: enquiry.suggested_reply,
-        replyFilled: enquiry.reply_filled,
+  async function copyReplyText(text: string) {
+    if (text.trim() === '') {
+      setCopyNotice({ kind: 'warn', text: 'There is no reply to copy yet.' });
+      return;
+    }
+
+    const missing = pendingPlaceholders(text);
+    const tokens = missing.map((token) => `{{${token}}}`).join(', ');
+
+    if (
+      missing.length > 0 &&
+      !window.confirm(
+        `This reply still contains ${tokens}. Copy it anyway?`,
+      )
+    ) {
+      setCopyNotice({
+        kind: 'warn',
+        text: `Not copied — fill ${tokens} before sending.`,
       });
+      return;
+    }
 
-      if (text.trim() === '') {
-        setCopyNotice({ kind: 'warn', text: 'This enquiry has no reply to copy yet.' });
-        return;
-      }
-
+    try {
       await navigator.clipboard.writeText(text);
-      setCopyNotice({ kind: 'ok', text: 'Copied the filled reply.' });
-    } catch (error) {
-      if (error instanceof UnfilledPlaceholderError) {
-        const tokens = error.placeholders.map((token) => `{{${token}}}`).join(', ');
-        setCopyNotice({
-          kind: 'warn',
-          text: tokens
-            ? `Not copied — the reply still contains ${tokens}. Fill the template first.`
-            : 'Not copied — the reply still contains an unfilled placeholder.',
-        });
-        return;
-      }
-
+      setCopyNotice(
+        missing.length > 0
+          ? {
+              kind: 'warn',
+              text: `Copied, but the reply still contains ${tokens}. Fill them before sending.`,
+            }
+          : { kind: 'ok', text: 'Copied the reply.' },
+      );
+    } catch {
       setCopyNotice({
         kind: 'error',
         text: 'Could not access the clipboard. Select the reply and copy it manually.',
@@ -241,22 +276,79 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
     }
   }
 
-  function startManual() {
-    if (rawMessage.trim() === '') return;
-    setDraft(EMPTY_DRAFT);
-    setManual(true);
-    setHasProposal(true);
-    setExtractError(null);
-    setSaveError(null);
+  async function generateReply() {
+    if (writingReply || !canUseAi) return;
+
+    if (rawMessage.trim() === '') {
+      setReplyNotice({
+        kind: 'warn',
+        text: 'Paste the message in "The message" box first, then generate a reply.',
+      });
+      messageRef.current?.focus();
+      messageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
+    if (
+      draft.reply.trim() !== '' &&
+      !window.confirm(
+        'Replace the reply already in the box with a new AI draft?',
+      )
+    ) {
+      return;
+    }
+
+    setWritingReply(true);
+    setReplyNotice(null);
     setCopyNotice(null);
+
+    try {
+      const response = await fetch('/api/reply', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: rawMessage }),
+      });
+      const payload: unknown = await response.json();
+
+      if (!response.ok) {
+        setReplyNotice({
+          kind: 'error',
+          text: messageFrom(payload, 'Could not generate a reply.'),
+        });
+        return;
+      }
+
+      const result = payload as ReplyPayload;
+      const reply = result.reply ?? '';
+
+      setDraft((current) => ({
+        ...current,
+        reply,
+      }));
+      setReplyNotice(
+        reply.trim() === ''
+          ? null
+          : {
+              kind: 'ok',
+              text: 'AI draft added to the reply box. Edit it or fill any placeholders before copying.',
+            },
+      );
+    } catch {
+      setReplyNotice({
+        kind: 'error',
+        text: 'Could not reach the reply service. Try again or write the reply yourself.',
+      });
+    } finally {
+      setWritingReply(false);
+    }
   }
 
   function startAnother() {
     setRawMessage('');
     setDraft(EMPTY_DRAFT);
     setHasProposal(false);
-    setManual(false);
     setExtractError(null);
+    setReplyNotice(null);
     setSaveError(null);
     setSaved(null);
     setCopyNotice(null);
@@ -266,9 +358,6 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
     const copyText =
       saved.enquiry.reply_filled ?? saved.enquiry.suggested_reply;
     const missing = pendingPlaceholders(copyText);
-    const templateKept =
-      saved.enquiry.suggested_reply !== '' &&
-      saved.enquiry.suggested_reply !== saved.enquiry.reply_filled;
 
     return (
       <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-10">
@@ -284,7 +373,13 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
         <section className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-medium text-emerald-700">Now in New</p>
+              <p className="text-sm font-medium text-emerald-700">
+                Now in{' '}
+                {saved.enquiry.status === 'new'
+                  ? 'New'
+                  : saved.enquiry.status.charAt(0).toUpperCase() +
+                    saved.enquiry.status.slice(1)}
+              </p>
               <p className="mt-1 text-lg font-semibold text-slate-900">
                 {saved.enquiry.name}
               </p>
@@ -304,7 +399,7 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
 
           <div className="mt-6 rounded-xl bg-slate-50 p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              Filled reply — what gets copied
+              Reply
             </p>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
               {copyText === ''
@@ -315,22 +410,12 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
               <p className="mt-3 text-xs font-medium text-amber-700">
                 This reply still contains{' '}
                 {missing.map((token) => `{{${token}}}`).join(', ')}. Copying
-                will warn until it is filled.
+                asks for confirmation until it is filled.
               </p>
-            ) : null}
-            {templateKept ? (
-              <details className="mt-3">
-                <summary className="cursor-pointer text-xs font-medium text-slate-600">
-                  Template kept
-                </summary>
-                <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">
-                  {saved.enquiry.suggested_reply}
-                </p>
-              </details>
             ) : null}
             <button
               type="button"
-              onClick={() => copyReply(saved.enquiry)}
+              onClick={() => copyReplyText(copyText)}
               className="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
             >
               Copy reply
@@ -352,13 +437,21 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
           </div>
         </section>
 
-        <button
-          type="button"
-          onClick={startAnother}
-          className="self-start rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-        >
-          Capture another enquiry
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/pipeline"
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+          >
+            Go to pipeline
+          </Link>
+          <button
+            type="button"
+            onClick={startAnother}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Capture another enquiry
+          </button>
+        </div>
       </main>
     );
   }
@@ -373,9 +466,10 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
           Capture an enquiry
         </h1>
         <p className="max-w-2xl text-sm leading-relaxed text-slate-600">
-          Paste the message as it arrived. Let the AI propose the details or
-          fill them in by hand, correct anything wrong, then save. The original
-          message is kept exactly as pasted.
+          Paste the message as it arrived, then type the details yourself or
+          let the AI propose them. Read message fills the enquiry details;
+          Generate reply drafts only the reply. The original message is kept
+          exactly as pasted.
         </p>
       </header>
 
@@ -388,62 +482,61 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
         </label>
         <textarea
           id="raw-message"
+          ref={messageRef}
           value={rawMessage}
           onChange={(event) => setRawMessage(event.target.value)}
-          readOnly={hasProposal && !manual}
+          readOnly={extracting || writingReply || hasProposal}
           rows={6}
           placeholder="Paste a WhatsApp message, a Facebook DM, a website enquiry or phone-call notes…"
           className="mt-3 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 read-only:bg-slate-50"
         />
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          {!hasProposal ? (
-            <>
-              <button
-                type="button"
-                onClick={extract}
-                disabled={extracting || rawMessage.trim() === '' || !canUseAi}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-              >
-                {extracting
-                  ? 'Reading…'
-                  : canUseAi
-                    ? 'Read message'
-                    : 'AI extraction is off'}
-              </button>
-              <button
-                type="button"
-                onClick={startManual}
-                disabled={rawMessage.trim() === ''}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Fill in manually
-              </button>
-            </>
-          ) : (
+          <button
+            type="button"
+            onClick={extract}
+            disabled={
+              extracting || writingReply || rawMessage.trim() === '' || !canUseAi
+            }
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            {extracting
+              ? 'Reading…'
+              : canUseAi
+                ? hasProposal
+                  ? 'Read message again'
+                  : 'Read message'
+                : 'AI extraction is off'}
+          </button>
+          {hasStarted ? (
             <button
               type="button"
               onClick={startAnother}
-              disabled={saving}
+              disabled={extracting || writingReply || saving}
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Start over
             </button>
-          )}
-          {hasProposal ? (
-            <span className="text-xs text-slate-500">
-              {manual
-                ? 'You can still edit the original message until you save.'
-                : 'The original message is locked while you review the proposal.'}
-            </span>
           ) : null}
+          <span className="text-xs text-slate-500">
+            {hasProposal
+              ? 'The original message is locked while you review the AI proposal. Start over to edit it.'
+              : 'AI is optional — the details below can be typed in directly.'}
+          </span>
         </div>
 
-        {!canUseAi && !hasProposal ? (
+        {!canUseAi ? (
           <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
             AI extraction is unavailable, so the Read message button is off.
-            Paste the message and choose Fill in manually — every field below
-            is editable.
+            Enter the details below yourself — every field is editable and
+            saving works as usual.
+          </p>
+        ) : null}
+
+        {hasProposal ? (
+          <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            The AI proposal is in the details below. Check every value before
+            saving.
           </p>
         ) : null}
 
@@ -454,38 +547,23 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
         ) : null}
       </section>
 
-      {!hasProposal ? (
-        <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center">
-          <p className="text-sm font-semibold text-slate-800">
-            Nothing to review yet.
-          </p>
-          <p className="mx-auto mt-1 max-w-xl text-sm leading-relaxed text-slate-600">
-            Paste a message above, then{' '}
-            {canUseAi ? (
-              <>
-                choose <strong>Read message</strong> to get an AI proposal or{' '}
-              </>
-            ) : null}
-            choose <strong>Fill in manually</strong> to enter every field
-            yourself. Either way a saved enquiry starts in New and the pipeline
-            waits for you to move it.
-          </p>
-        </section>
-      ) : null}
-
-      {hasProposal ? (
-        <form
-          onSubmit={save}
-          className="flex flex-col gap-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+      <form
+        onSubmit={save}
+        className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+      >
+        <fieldset
+          disabled={extracting || writingReply}
+          aria-label="Enquiry details"
+          className="m-0 flex w-full min-w-0 flex-col gap-6 border-0 p-0"
         >
           <div>
             <p className="text-sm font-semibold text-slate-900">
-              {manual ? '2. Enter the details' : '2. Review the proposal'}
+              {hasProposal ? '2. Review the proposal' : '2. The details'}
             </p>
             <p className="mt-1 text-sm text-slate-600">
-              {manual
-                ? 'Entered by hand, with no AI proposal. Every field is editable and a saved enquiry always starts in New.'
-                : 'Everything here is editable except status — a saved enquiry always starts in New.'}
+              {hasProposal
+                ? 'Everything here is editable except status — a saved enquiry always starts in New.'
+                : 'Type these in yourself, or use Read message above to let the AI propose them. Everything is editable and a saved enquiry always starts in New.'}
             </p>
           </div>
 
@@ -608,81 +686,110 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
             Needs attention
           </label>
 
+          <label className="flex items-start gap-3 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={draft.contacted}
+              onChange={(event) =>
+                update('contacted', event.target.checked)
+              }
+              className="mt-0.5 h-4 w-4 rounded border-slate-300"
+            />
+            <span>
+              Contacted
+              <span className="mt-0.5 block text-xs text-slate-500">
+                Set the status to Contacted because you sent this reply. A
+                reply is then required. Left unticked, the enquiry stays New.
+              </span>
+            </span>
+          </label>
+
           <div className="flex flex-col gap-4 rounded-xl bg-slate-50 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Reply</p>
-                <p className="text-xs text-slate-600">
-                  The template keeps its placeholders. The filled version is
-                  stored separately and is what gets copied.
-                </p>
-              </div>
-              <label className="flex items-center gap-2 text-xs text-slate-600">
-                Language
-                <select
-                  value={draft.replyLanguage}
-                  onChange={(event) =>
-                    update(
-                      'replyLanguage',
-                      event.target.value as ReplyLanguage,
-                    )
-                  }
-                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs"
-                >
-                  {LANGUAGE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Reply</p>
+              <p className="text-xs text-slate-600">
+                One editable reply. Copy it whenever you need; unfilled
+                placeholders ask before they leave this screen.
+              </p>
             </div>
 
             <Field
-              label="Reply template"
-              htmlFor="suggested-reply"
-              hint="Placeholders are allowed here."
+              label="Reply"
+              htmlFor="reply"
+              hint="AI drafts keep placeholders. Edit them here when you know the answers."
             >
               <textarea
-                id="suggested-reply"
-                value={draft.suggestedReply}
-                onChange={(event) => update('suggestedReply', event.target.value)}
-                rows={4}
+                id="reply"
+                value={draft.reply}
+                onChange={(event) => update('reply', event.target.value)}
+                readOnly={writingReply}
+                rows={5}
+                placeholder="Write a reply, or generate one from the message."
                 className={inputClass}
               />
             </Field>
 
-            {pendingPlaceholders(draft.suggestedReply).length > 0 ? (
+            {pendingPlaceholders(draft.reply).length > 0 ? (
               <p className="text-xs font-medium text-amber-700">
                 Needs filling:{' '}
-                {pendingPlaceholders(draft.suggestedReply)
+                {pendingPlaceholders(draft.reply)
                   .map((token) => `{{${token}}}`)
                   .join(', ')}
               </p>
             ) : null}
 
-            <Field
-              label="Filled reply"
-              htmlFor="reply-filled"
-              hint="What the operator copies. Leave blank if the template has no placeholders."
-            >
-              <textarea
-                id="reply-filled"
-                value={draft.replyFilled}
-                onChange={(event) => update('replyFilled', event.target.value)}
-                rows={4}
-                className={inputClass}
-              />
-            </Field>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={generateReply}
+                disabled={writingReply || !canUseAi}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {writingReply
+                  ? 'Writing…'
+                  : canUseAi
+                    ? 'Generate reply'
+                    : 'AI reply is off'}
+              </button>
+              <button
+                type="button"
+                onClick={() => copyReplyText(draft.reply)}
+                disabled={writingReply}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Copy reply
+              </button>
+            </div>
 
-            <button
-              type="button"
-              onClick={() => update('replyFilled', draft.suggestedReply)}
-              disabled={draft.suggestedReply.trim() === ''}
-              className="self-start rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Start from the template
-            </button>
+            {replyNotice ? (
+              <p
+                role="status"
+                className={`rounded-lg px-3 py-2 text-sm ${
+                  replyNotice.kind === 'ok'
+                    ? 'bg-emerald-50 text-emerald-800'
+                    : replyNotice.kind === 'warn'
+                      ? 'bg-amber-50 text-amber-900'
+                      : 'bg-red-50 text-red-800'
+                }`}
+              >
+                {replyNotice.text}
+              </p>
+            ) : null}
+
+            {copyNotice ? (
+              <p
+                role="status"
+                className={`rounded-lg px-3 py-2 text-sm ${
+                  copyNotice.kind === 'ok'
+                    ? 'bg-emerald-50 text-emerald-800'
+                    : copyNotice.kind === 'warn'
+                      ? 'bg-amber-50 text-amber-900'
+                      : 'bg-red-50 text-red-800'
+                }`}
+              >
+                {copyNotice.text}
+              </p>
+            ) : null}
           </div>
 
           {saveError ? (
@@ -701,14 +808,17 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
           <button
             type="submit"
             disabled={
-              saving || draft.name.trim() === '' || rawMessage.trim() === ''
+              saving ||
+              writingReply ||
+              draft.name.trim() === '' ||
+              rawMessage.trim() === ''
             }
             className="self-start rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {saving ? 'Saving…' : 'Save enquiry'}
           </button>
-        </form>
-      ) : null}
+        </fieldset>
+      </form>
     </main>
   );
 }
