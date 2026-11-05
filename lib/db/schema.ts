@@ -46,7 +46,7 @@ export const enquiries = pgTable(
     index('enquiries_status_kind_idx').on(table.status, table.kind),
     check(
       'enquiries_channel_check',
-      sql`${table.channel} in ('whatsapp','facebook','website','email','phone')`,
+      sql`${table.channel} in ('whatsapp','facebook','website','phone')`,
     ),
     check(
       'enquiries_interest_check',

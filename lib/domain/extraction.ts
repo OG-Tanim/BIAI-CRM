@@ -16,7 +16,7 @@ export { hasUnfilledPlaceholder };
  * is enforced only when an operator edits a reply.
  */
 
-export const CHANNELS = ['whatsapp', 'facebook', 'website', 'email', 'phone'] as const;
+export const CHANNELS = ['whatsapp', 'facebook', 'website', 'phone'] as const;
 export const INTERESTS = ['bootcamp', 'fellowship', 'corporate', 'unclear'] as const;
 export const KINDS = ['sales_lead', 'job_seeker', 'support', 'spam', 'unclear'] as const;
 

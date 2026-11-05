@@ -40,7 +40,7 @@ The AI is an assistant, not an actor. It cannot mark anything Paid, it cannot cr
 3. As a sales team member, I want every prefilled field to be editable before saving, so that an AI mistake never reaches the database unchecked.
 4. As a sales team member, I want nothing written to the database until I press save, so that abandoned or mistaken extractions leave no junk records.
 5. As a sales team member, I want a newly saved enquiry to start in the New status, so that the board always reflects what I have actually done rather than what the AI guessed.
-6. As a sales team member, I want the channel recorded as WhatsApp, Facebook, website, email or phone, so that I know where to reply and how the person found us.
+6. As a sales team member, I want the channel recorded as WhatsApp, Facebook, website or phone, so that I know where to reply and how the person found us.
 7. As a sales team member, I want phone to be optional, so that Facebook DMs and comments without a number can still be captured.
 8. As a sales team member, I want an optional channel handle (WhatsApp username, email address, Facebook profile), so that people with no phone number are still reachable.
 9. As a sales team member, I want the AI to record what the person wants as bootcamp, fellowship, corporate training or unclear, so that I can route and quote correctly.
@@ -130,7 +130,7 @@ This spec uses the following terms consistently. There is no pre-existing glossa
 - **Kind** — what the message *is*: `sales_lead`, `job_seeker`, `support`, `spam`, `unclear`. Orthogonal to status.
 - **Interest** — what the person *wants*: `bootcamp`, `fellowship`, `corporate`, `unclear`.
 - **Status** — where the *deal* is, as a record of what the operator did: `new`, `contacted`, `interested`, `paid`, `lost`. Never a description of the message.
-- **Channel** — where the message came from: `whatsapp`, `facebook`, `website`, `email`, `phone`.
+- **Channel** — where the message came from: `whatsapp`, `facebook`, `website`, `phone`.
 - **Extraction** — the AI step that turns a raw message into prefilled fields. A proposal, never a commit.
 - **Card** — an enquiry rendered on the board. Only `sales_lead` enquiries become cards.
 - **Follow-up queue** — enquiries in `new` or `contacted` with no activity for 48 hours.
@@ -158,7 +158,7 @@ enquiries
   company           text null
   job_title         text null
   phone             text null
-  channel           text not null check (channel in ('whatsapp','facebook','website','email','phone'))
+  channel           text not null check (channel in ('whatsapp','facebook','website','phone'))
   channel_handle    text null
   interest          text not null check (interest in ('bootcamp','fellowship','corporate','unclear'))
   kind              text not null check (kind in ('sales_lead','job_seeker','support','spam','unclear'))
@@ -209,7 +209,7 @@ type ExtractionResult = {
   company: string | null;
   job_title: string | null;
   phone: string | null;
-  channel: 'whatsapp' | 'facebook' | 'website' | 'email' | 'phone';
+  channel: 'whatsapp' | 'facebook' | 'website' | 'phone';
   channel_handle: string | null;
   interest: 'bootcamp' | 'fellowship' | 'corporate' | 'unclear';
   kind: 'sales_lead' | 'job_seeker' | 'support' | 'spam' | 'unclear';
@@ -354,7 +354,6 @@ There is none — this is a greenfield repository with no application code, no t
 - Conversation threads. A repeat message from the same person is a separate enquiry; the only concession is a non-blocking duplicate warning.
 - Bulk CSV import and any file upload. The twenty samples are loaded by a seed script into the testing branch only.
 - Live ingestion from WhatsApp, Facebook or the website — no webhooks, no API integrations, no polling. Messages are pasted by hand.
-- The `email` channel is modelled but unused, because no sample uses it.
 - Payment verification, invoicing, or integration with any gateway. "Paid" is a human assertion.
 - Edit history or audit log beyond the notes table.
 - Rich text, attachments, images, or voice notes in the raw message.

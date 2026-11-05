@@ -14,7 +14,7 @@ Return ONLY a JSON object. No markdown, no commentary, no code fences. It must h
   "company": string | null,
   "job_title": string | null,
   "phone": string | null,
-  "channel": "whatsapp" | "facebook" | "website" | "email" | "phone",
+  "channel": "whatsapp" | "facebook" | "website" | "phone",
   "channel_handle": string | null,
   "interest": "bootcamp" | "fellowship" | "corporate" | "unclear",
   "kind": "sales_lead" | "job_seeker" | "support" | "spam" | "unclear",

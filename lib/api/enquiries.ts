@@ -71,7 +71,8 @@ async function findEarlierEnquiry(
 /**
  * `POST /api/enquiries` — save a reviewed proposal.
  *
- * One insert, `new` unless the explicit contacted flag is set. A phone number
+ * One insert, always `new`: the capture form cannot choose a status, so a card
+ * moves only when the operator moves it. A phone number
  * already on file produces a warning naming the earlier enquiry; it never
  * blocks the save.
  */

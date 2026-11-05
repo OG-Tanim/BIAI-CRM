@@ -46,27 +46,6 @@ describe('prepareEnquiry', () => {
     expect(values.status).toBe('new');
   });
 
-  it('moves to Contacted and stamps first contact only when the flag is set', () => {
-    const now = new Date('2026-01-02T03:04:05Z');
-    const values = prepareEnquiry(
-      reviewed({ contacted: true }),
-      RAW_MESSAGE,
-      now,
-    );
-
-    expect(values.status).toBe('contacted');
-    expect(values.lastContactedAt).toBe(now);
-  });
-
-  it('refuses the contacted flag when the reply is empty', () => {
-    expect(() =>
-      prepareEnquiry(
-        reviewed({ contacted: true, suggested_reply: '', reply_filled: null }),
-        RAW_MESSAGE,
-      ),
-    ).toThrow(EnquiryValidationError);
-  });
-
   it('keeps the original message byte for byte', () => {
     const message = '  Line one.\n\nLine two — with “quotes”.\t ';
     const values = prepareEnquiry(reviewed(), message);

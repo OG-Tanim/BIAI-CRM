@@ -32,20 +32,16 @@ export {
  * I/O-free capture decisions.
  *
  * The operator's reviewed form is trusted to be human, not trusted to be
- * right. This module decides what a save actually writes: status is `new`
- * unless the operator explicitly marks the enquiry as already contacted, the
- * original message is never rewritten, and the reply template and its filled
- * counterpart stay two separate values.
+ * right. This module decides what a save actually writes: status is always
+ * `new`, the original message is never rewritten, and the reply template and
+ * its filled counterpart stay two separate values.
  */
 
 export const STATUSES = ['new', 'contacted', 'interested', 'paid', 'lost'] as const;
 export type Status = (typeof STATUSES)[number];
 
-/** The status a save produces unless the operator ticks the contacted flag. */
+/** The only status a save produces. Moving a card is the operator's job. */
 export const NEW_STATUS = 'new' satisfies Status;
-
-/** The status a save produces when the operator confirms they contacted the person. */
-export const CONTACTED_STATUS = 'contacted' satisfies Status;
 
 /**
  * What a save writes. Deliberately not the database row type: the domain
@@ -134,16 +130,11 @@ const attentionField = z.preprocess(
   z.boolean(),
 );
 
-/** True only when the operator says this enquiry was already contacted. */
-const contactedField = z.preprocess(
-  (value: unknown) => value === true,
-  z.boolean(),
-);
-
 /**
  * The reviewed form, in the same snake_case the extraction endpoint returns so
  * a proposal can be posted almost unchanged. Unknown keys — including a
- * `status` an over-eager client might send — are stripped.
+ * `status` or an `outcome` an over-eager client might send — are stripped, so
+ * a save cannot choose a status at all.
  */
 const reviewedEnquirySchema = z.object({
   name: requiredText,
@@ -158,7 +149,6 @@ const reviewedEnquirySchema = z.object({
   suggested_reply: plainText,
   reply_filled: nullableText,
   needs_attention: attentionField,
-  contacted: contactedField,
 });
 
 export type ReviewedEnquiry = z.infer<typeof reviewedEnquirySchema>;
@@ -223,7 +213,6 @@ function resolveFilledReply(
 export function prepareEnquiry(
   input: unknown,
   rawMessage: string,
-  now: Date = new Date(),
 ): NewEnquiryValues {
   if (typeof rawMessage !== 'string' || rawMessage.trim() === '') {
     throw new EnquiryValidationError(['raw_message: An original message is required.']);
@@ -241,14 +230,6 @@ export function prepareEnquiry(
 
   const data = parsed.data;
 
-  // Claiming the person was contacted means a reply was actually sent. An
-  // empty reply box cannot back that claim, so the save is refused.
-  if (data.contacted && data.suggested_reply === '') {
-    throw new EnquiryValidationError([
-      'suggested_reply: A reply is required when marking the enquiry Contacted.',
-    ]);
-  }
-
   return {
     name: data.name,
     company: data.company,
@@ -258,15 +239,15 @@ export function prepareEnquiry(
     channelHandle: data.channel_handle,
     interest: data.interest,
     kind: data.kind,
-    // The form never sends a status. Only its explicit contacted flag moves
-    // the row off New, and that move stamps the first contact time.
-    status: data.contacted ? CONTACTED_STATUS : NEW_STATUS,
+    // A save cannot choose a status. The card starts in New and moves only
+    // through an explicit operator action on the board.
+    status: NEW_STATUS,
     needsAttention: data.needs_attention,
     summary: data.summary,
     rawMessage,
     suggestedReply: data.suggested_reply,
     replyFilled: resolveFilledReply(data.suggested_reply, data.reply_filled),
-    lastContactedAt: data.contacted ? now : null,
+    lastContactedAt: null,
   };
 }
 

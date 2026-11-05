@@ -115,33 +115,6 @@ describe('POST /api/enquiries', () => {
     });
   });
 
-  it('saves as Contacted when the operator contact flag is set', async () => {
-    await scenario(async ({ save, rows }) => {
-      const { response, body } = await save(reviewed({ contacted: true }));
-
-      expect(response.status).toBe(201);
-
-      const saved = body.enquiry as Record<string, unknown>;
-      expect(saved.status).toBe('contacted');
-      expect(saved.last_contacted_at).not.toBeNull();
-
-      const stored = await rows();
-      expect(stored[0]!.status).toBe('contacted');
-      expect(stored[0]!.lastContactedAt).not.toBeNull();
-    });
-  });
-
-  it('refuses Contacted when the reply is empty', async () => {
-    await scenario(async ({ save, rows }) => {
-      const { response } = await save(
-        reviewed({ contacted: true, suggested_reply: '', reply_filled: null }),
-      );
-
-      expect(response.status).toBe(422);
-      expect(await rows()).toHaveLength(0);
-    });
-  });
-
   it('warns about an earlier enquiry with the same phone and still saves', async () => {
     await scenario(async ({ save, rows }) => {
       const first = await save(

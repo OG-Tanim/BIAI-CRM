@@ -17,7 +17,6 @@ const CHANNEL_OPTIONS: Array<{ value: Channel; label: string }> = [
   { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'facebook', label: 'Facebook' },
   { value: 'website', label: 'Website' },
-  { value: 'email', label: 'Email' },
   { value: 'phone', label: 'Phone call' },
 ];
 
@@ -48,7 +47,6 @@ type Draft = {
   summary: string;
   reply: string;
   needsAttention: boolean;
-  contacted: boolean;
 };
 
 type ExtractionPayload = {
@@ -82,7 +80,6 @@ const EMPTY_DRAFT: Draft = {
   summary: '',
   reply: '',
   needsAttention: false,
-  contacted: false,
 };
 
 function draftFromExtraction(payload: ExtractionPayload, current: Draft): Draft {
@@ -100,9 +97,6 @@ function draftFromExtraction(payload: ExtractionPayload, current: Draft): Draft 
     // typed by hand or drafted by Generate reply — survives an extraction.
     reply: current.reply,
     needsAttention: payload.needs_attention,
-    // Whether the operator already contacted this person is their own claim,
-    // not something an extraction may reset.
-    contacted: current.contacted,
   };
 }
 
@@ -185,13 +179,6 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
     // React state is not synchronous: two clicks in the same tick would both
     // get past a `saving` check and insert two rows.
     if (saveInFlight.current) return;
-    // A contact claim needs the reply that was actually sent.
-    if (draft.contacted && draft.reply.trim() === '') {
-      setSaveError(
-        'Add the reply you sent before marking this enquiry as contacted.',
-      );
-      return;
-    }
     saveInFlight.current = true;
     setSaving(true);
     setSaveError(null);
@@ -216,7 +203,6 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
           // the enquiry detail view and any older reader see the same text.
           reply_filled: draft.reply.trim() === '' ? null : draft.reply,
           needs_attention: draft.needsAttention,
-          contacted: draft.contacted,
           raw_message: rawMessage,
         }),
       });
@@ -684,24 +670,6 @@ export function CaptureForm({ aiMode }: { aiMode: AiMode }) {
               className="h-4 w-4 rounded border-slate-300"
             />
             Needs attention
-          </label>
-
-          <label className="flex items-start gap-3 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={draft.contacted}
-              onChange={(event) =>
-                update('contacted', event.target.checked)
-              }
-              className="mt-0.5 h-4 w-4 rounded border-slate-300"
-            />
-            <span>
-              Contacted
-              <span className="mt-0.5 block text-xs text-slate-500">
-                Set the status to Contacted because you sent this reply. A
-                reply is then required. Left unticked, the enquiry stays New.
-              </span>
-            </span>
           </label>
 
           <div className="flex flex-col gap-4 rounded-xl bg-slate-50 p-4">
