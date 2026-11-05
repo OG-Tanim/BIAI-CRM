@@ -67,14 +67,43 @@ export function resolveTimeoutMs(
  * spends `max_tokens` and seconds on a phase nobody reads, and leaves
  * `content: null` when the budget runs out mid-thought.
  *
+ * There are two switches, because the providers disagree on the field name.
+ *
  * `enable_thinking` is a chat-template flag, not an OpenAI field: vLLM and the
  * local MLX server read it from `chat_template_kwargs`, and a top-level
  * `enable_thinking` is silently ignored (measured against the local MLX
- * server). Every call turns it off through this one object.
+ * server).
+ *
+ * OpenRouter ignores `chat_template_kwargs` entirely — it accepts the field
+ * without error, which is worse than rejecting it, because the request looks
+ * fixed while the model keeps thinking. Its own parameter is `reasoning`, and
+ * `effort: "none"` disables the phase. Without it a reasoning model can spend
+ * the whole budget on thoughts and return an empty `content`: the 2000-token
+ * reply budget disappearing into 2000 reasoning tokens is exactly that failure.
  */
 const THINKING_OFF = {
   chat_template_kwargs: { enable_thinking: false },
 } as const;
+
+/** OpenRouter's own "do not think" switch; see above. */
+const OPENROUTER_REASONING_OFF = {
+  reasoning: { effort: 'none' },
+} as const;
+
+/**
+ * True only when the configured endpoint is OpenRouter itself.
+ *
+ * `OPENROUTER_BASE_URL` may point at a self-hosted OpenAI-compatible server,
+ * which is why the two switches are not sent together: an unknown field is
+ * tolerated by OpenRouter and not by every local server.
+ */
+function talksToOpenRouter(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl).hostname.endsWith('openrouter.ai');
+  } catch {
+    return false;
+  }
+}
 
 type ChatCompletionResponse = {
   choices?: Array<{
@@ -132,6 +161,7 @@ export function createOpenRouterClient(
   );
   const fetchImpl = config.fetchImpl ?? fetch;
   const retryDelayMs = config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+  const onOpenRouter = talksToOpenRouter(baseUrl);
   const sleep =
     config.sleep ??
     ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
@@ -156,6 +186,7 @@ export function createOpenRouterClient(
             ? { response_format: { type: 'json_object' } }
             : {}),
           ...THINKING_OFF,
+          ...(onOpenRouter ? OPENROUTER_REASONING_OFF : {}),
           messages: request.messages,
         }),
         signal: AbortSignal.timeout(timeoutMs),
